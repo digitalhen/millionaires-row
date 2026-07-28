@@ -8,3 +8,4 @@ data/seed/*.sql.gz
 .env.local
 *.log
 .DS_Store
+/public/maplibre/

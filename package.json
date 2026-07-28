@@ -1,0 +1,29 @@
+{
+  "name": "millionaires-row",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NYC pied-a-terre tax roll explorer",
+  "scripts": {
+    "predev": "node tools/copy-maplibre-worker.mjs",
+    "dev": "next dev",
+    "prebuild": "node tools/copy-maplibre-worker.mjs",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.0.0",
+    "next": "^15.5.22",
+    "pg": "^8.22.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^26.1.2",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3"
+  }
+}

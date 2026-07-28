@@ -1,0 +1,648 @@
+/* Millionaires' Row — strict white on black, blueprint / tax-ledger. */
+
+:root {
+  --bg: #000;
+  --fg: #fff;
+  --grey-1: #b3b3b3; /* secondary text */
+  --grey-2: #7a7a7a; /* labels */
+  --grey-3: #444; /* hairlines */
+  --grey-4: #1a1a1a; /* panel fill */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+body {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--fg);
+  text-decoration: none;
+  border-bottom: 1px solid var(--grey-3);
+}
+
+a:hover {
+  border-bottom-color: var(--fg);
+  background: #111;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+::selection {
+  background: #fff;
+  color: #000;
+}
+
+/* ---------- primitives ---------- */
+
+.label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+}
+
+.mono-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--grey-3);
+  margin: 0;
+}
+
+.badge {
+  display: inline-block;
+  border: 1px solid var(--fg);
+  padding: 1px 6px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+a.badge {
+  border-bottom: 1px solid var(--fg);
+}
+
+a.badge:hover {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+/* ---------- page chrome ---------- */
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 20px 80px;
+}
+
+.topbar {
+  border-bottom: 1px solid var(--grey-3);
+  margin-bottom: 28px;
+  padding: 14px 0;
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.topbar .wordmark {
+  font-size: 13px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  border: 0;
+}
+
+.topbar .wordmark:hover {
+  background: none;
+  color: var(--grey-1);
+}
+
+.crumb {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+}
+
+/* ---------- home / map ---------- */
+
+.map-shell {
+  position: fixed;
+  inset: 0;
+  background: #000;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.map-canvas canvas {
+  outline: none;
+}
+
+.map-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.map-overlay .search,
+.map-overlay a,
+.map-foot a {
+  pointer-events: auto;
+}
+
+.hero {
+  padding: 22px 22px 0;
+  max-width: 620px;
+}
+
+.hero h1 {
+  font-size: 22px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px #000, 0 0 24px #000;
+}
+
+.hero .tagline {
+  margin: 8px 0 14px;
+  color: var(--grey-1);
+  font-size: 12px;
+  max-width: 52ch;
+  text-shadow: 0 0 10px #000, 0 0 20px #000;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-size: 11px;
+  color: var(--grey-1);
+  text-shadow: 0 0 10px #000;
+}
+
+.hero-stats b {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* ---------- search ---------- */
+
+.search {
+  position: relative;
+  width: 100%;
+}
+
+.search-row {
+  display: flex;
+  border: 1px solid var(--fg);
+  background: rgba(0, 0, 0, 0.88);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 14px;
+  padding: 10px 12px;
+  letter-spacing: 0.04em;
+}
+
+.search input:focus {
+  outline: none;
+}
+
+.search input::placeholder {
+  color: var(--grey-2);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+}
+
+.search-modes {
+  display: flex;
+  border-left: 1px solid var(--grey-3);
+}
+
+.search-modes button {
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--grey-3);
+  color: var(--grey-2);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.search-modes button:first-child {
+  border-left: 0;
+}
+
+.search-modes button[aria-pressed='true'] {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.search-results {
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 0;
+  right: 0;
+  background: #000;
+  border: 1px solid var(--fg);
+  max-height: 60vh;
+  overflow-y: auto;
+  z-index: 20;
+}
+
+.search-hint,
+.search-empty {
+  padding: 10px 12px;
+  color: var(--grey-2);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.result {
+  display: block;
+  border: 0;
+  border-bottom: 1px solid var(--grey-3);
+  padding: 8px 12px;
+}
+
+.result:last-child {
+  border-bottom: 0;
+}
+
+.result:hover,
+.result.active {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.result:hover .result-sub,
+.result.active .result-sub {
+  color: #333;
+}
+
+.result:hover .badge,
+.result.active .badge {
+  border-color: var(--bg);
+}
+
+.result-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.result-addr {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-fmv {
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.result-sub {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--grey-1);
+  margin-top: 2px;
+}
+
+.result-owner {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- map tooltip / legend ---------- */
+
+.map-tooltip {
+  position: absolute;
+  z-index: 15;
+  pointer-events: none;
+  background: #000;
+  border: 1px solid #fff;
+  padding: 5px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  transform: translate(12px, -50%);
+}
+
+.map-tooltip .t-fmv {
+  color: var(--grey-1);
+}
+
+.map-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 14px 22px;
+  flex-wrap: wrap;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+}
+
+.map-status {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+}
+
+/* ---------- detail pages ---------- */
+
+.detail-head {
+  padding: 6px 0 18px;
+  border-bottom: 1px solid var(--fg);
+}
+
+.detail-head h1 {
+  font-size: 26px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  word-break: break-word;
+}
+
+.detail-sub {
+  margin-top: 6px;
+  color: var(--grey-1);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fmv-block {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--grey-3);
+}
+
+.fmv-block .fmv {
+  font-size: 44px;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.section {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--grey-3);
+}
+
+.section > h2 {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+  margin-bottom: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1px;
+  background: var(--grey-3);
+  border: 1px solid var(--grey-3);
+}
+
+.cell {
+  background: var(--bg);
+  padding: 10px 12px;
+  min-height: 58px;
+}
+
+.cell .label {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.cell .value {
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.cell .value.dim {
+  color: var(--grey-2);
+}
+
+.owner-line {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.owner-line .owner-name {
+  font-size: 18px;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- tables ---------- */
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--grey-3);
+}
+
+table.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 620px;
+}
+
+table.ledger th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fg);
+  white-space: nowrap;
+}
+
+table.ledger td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--grey-3);
+  vertical-align: top;
+}
+
+table.ledger tr:last-child td {
+  border-bottom: 0;
+}
+
+table.ledger tbody tr:hover {
+  background: #0d0d0d;
+}
+
+table.ledger td.num,
+table.ledger th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+table.ledger td a {
+  border-bottom-color: var(--grey-3);
+}
+
+.mini-map {
+  height: 260px;
+  border: 1px solid var(--grey-3);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ---------- footer ---------- */
+
+.about {
+  margin-top: 34px;
+  padding-top: 14px;
+  border-top: 1px solid var(--grey-3);
+  color: var(--grey-2);
+  font-size: 11px;
+  line-height: 1.7;
+  max-width: 78ch;
+}
+
+.about strong {
+  color: var(--grey-1);
+  font-weight: 400;
+}
+
+.about--compact {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  max-width: 60ch;
+  text-align: right;
+}
+
+/* ---------- maplibre control skin ---------- */
+
+.maplibregl-ctrl-group {
+  background: #000 !important;
+  border: 1px solid var(--grey-3) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.maplibregl-ctrl-group button {
+  background: #000 !important;
+  border-radius: 0 !important;
+  width: 26px !important;
+  height: 26px !important;
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--grey-3) !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: #1a1a1a !important;
+}
+
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-logo {
+  display: none !important;
+}
+
+/* ---------- misc ---------- */
+
+.notfound {
+  padding: 80px 0;
+  text-align: center;
+}
+
+.notfound h1 {
+  font-size: 60px;
+  letter-spacing: 0.1em;
+}
+
+.notfound p {
+  color: var(--grey-2);
+  margin: 14px 0 26px;
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: 14px 14px 0;
+    max-width: none;
+  }
+
+  .hero h1 {
+    font-size: 16px;
+    letter-spacing: 0.22em;
+  }
+
+  .hero .tagline {
+    display: none;
+  }
+
+  .map-foot {
+    padding: 10px 14px;
+  }
+
+  .about--compact {
+    display: none;
+  }
+
+  .fmv-block .fmv {
+    font-size: 30px;
+  }
+
+  .search-modes button {
+    padding: 0 7px;
+  }
+}
