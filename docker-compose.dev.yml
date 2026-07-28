@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: mrow-postgres
+    environment:
+      POSTGRES_USER: mrow
+      POSTGRES_PASSWORD: mrow
+      POSTGRES_DB: mrow
+    ports:
+      - "5435:5432"
+    volumes:
+      - mrow_pgdata:/var/lib/postgresql/data
+    command: postgres -c shared_buffers=512MB -c maintenance_work_mem=512MB
+
+volumes:
+  mrow_pgdata:

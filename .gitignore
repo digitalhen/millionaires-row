@@ -1,0 +1,10 @@
+node_modules/
+.next/
+data/raw/
+data/pluto/
+data/seed/*.dump
+data/seed/*.sql.gz
+.env
+.env.local
+*.log
+.DS_Store
