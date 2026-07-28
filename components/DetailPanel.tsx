@@ -5,6 +5,7 @@ import Link from 'next/link';
 import type { PropertyResponse } from '@/lib/types';
 import { boroName, buildingClassLabel, formatBbl, money, num, taxClassLabel } from '@/lib/format';
 import EligibleBadge, { NotOnRollNote } from './EligibleBadge';
+import OwnerCounts from './OwnerCounts';
 
 /**
  * Selected-property details. A right-hand side panel on desktop, a bottom sheet
@@ -113,6 +114,7 @@ export default function DetailPanel({
                       >
                         ▣ {num(owner.property_count)} properties
                       </Link>
+                      <OwnerCounts owner={owner} />
                     </>
                   )}
                 </dd>

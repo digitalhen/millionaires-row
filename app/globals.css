@@ -8,6 +8,10 @@
   --grey-3: #444; /* hairlines */
   --grey-4: #1a1a1a; /* panel fill */
   --red: #ff3b30; /* the one accent: matches DOF surcharge criteria */
+  /* Tier 1 — a parcel that is in the city assessment roll only. Kept in step
+     with TIER_COLORS.city in lib/mapStyle.ts so the legend key, the table mark
+     and the dots on the map are literally the same grey. */
+  --tier-city: #4d4d4d;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
   color-scheme: dark;
@@ -118,6 +122,16 @@ a.badge:hover {
   color: var(--red) !important;
 }
 
+/* Same slot as .eligible-mark, painted the grey the map uses for parcels that
+   are in the city roll only. */
+.not-on-roll-mark {
+  color: var(--tier-city);
+  font-size: 9px;
+  line-height: 1;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+
 .map-legend {
   margin: 0 0 4px;
   font-size: 10px;
@@ -137,7 +151,7 @@ a.badge:hover {
 }
 
 .map-legend .key-city {
-  color: #4d4d4d;
+  color: var(--tier-city);
 }
 
 .map-legend .key-eligible {
@@ -159,6 +173,35 @@ a.badge:hover {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+/* An owner's holdings, narrowed tier by tier. Wraps to as many lines as it
+   needs so the same component works in the 380px side panel. */
+.owner-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 10px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+}
+
+.owner-counts b {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.owner-counts .oc-eligible,
+.owner-counts .oc-eligible b {
+  color: var(--red);
+}
+
+.owner-counts span + span::before {
+  content: '·';
+  margin-right: 14px;
+  color: var(--grey-3);
 }
 
 /* ---------- page chrome ---------- */
@@ -273,6 +316,17 @@ a.badge:hover {
 .hero-stats b {
   color: var(--fg);
   font-weight: 500;
+}
+
+/* Second row: owners and money. Held back so the three-tier count above it
+   reads as the headline rather than as one item in a list of six. */
+.hero-stats--sub {
+  margin-top: 6px;
+  color: var(--grey-2);
+}
+
+.hero-stats--sub b {
+  color: var(--grey-1);
 }
 
 /* ---------- search ---------- */

@@ -1,5 +1,5 @@
 import { query, queryOne } from './db';
-import { onSupplementalSql, schemaFlags, tierSql } from './schema';
+import { onSupplementalSql, ownerCountsSql, schemaFlags, tierSql } from './schema';
 import type {
   MapPoint,
   MapTier,
@@ -21,8 +21,14 @@ export const SEARCH_MAX_LIMIT = 100;
 /** Exact counts are capped so a query like "STREET" cannot cost a full scan. */
 export const SEARCH_COUNT_CAP = 10_000;
 export const OWNER_PROPERTY_CAP = 500;
-/** Size of the uniform (non-eligible) part of the citywide overview sample. */
-export const OVERVIEW_LIMIT = 55_000;
+/**
+ * Size of the uniform (non-eligible) part of the citywide overview sample.
+ * Plus the ~29k always-included eligible parcels this lands at ~105k points:
+ * 4.6MB of JSON, 1.4MB over the wire gzipped, fetched once and cached hard.
+ * That is the ceiling worth paying — past it the marks overlap so heavily that
+ * extra points add no visible density, only bytes and a slower first paint.
+ */
+export const OVERVIEW_LIMIT = 76_000;
 export const POINTS_MAX_LIMIT = 120_000;
 
 /**
@@ -124,8 +130,9 @@ export async function getProperty(parid: string): Promise<PropertyResponse | nul
 
   if (property.owner_norm) {
     owner = await queryOne<OwnerSummary>(
-      `SELECT owner_norm, display_name, property_count, total_fmv
-         FROM owners WHERE owner_norm = $1`,
+      `SELECT o.owner_norm, o.display_name, o.property_count, o.total_fmv,
+              ${ownerCountsSql(flags)}
+         FROM owners o WHERE o.owner_norm = $1`,
       [property.owner_norm],
     );
     if (owner && owner.property_count > 1) {
@@ -147,8 +154,9 @@ export async function getProperty(parid: string): Promise<PropertyResponse | nul
 export async function getOwner(ownerNorm: string): Promise<OwnerResponse | null> {
   const flags = await schemaFlags();
   const owner = await queryOne<OwnerSummary>(
-    `SELECT owner_norm, display_name, property_count, total_fmv
-       FROM owners WHERE owner_norm = $1`,
+    `SELECT o.owner_norm, o.display_name, o.property_count, o.total_fmv,
+            ${ownerCountsSql(flags)}
+       FROM owners o WHERE o.owner_norm = $1`,
     [ownerNorm],
   );
   if (!owner) return null;
@@ -167,6 +175,112 @@ export async function getOwner(ownerNorm: string): Promise<OwnerResponse | null>
     owner,
     properties,
     truncated: owner.property_count > properties.length,
+  };
+}
+
+/** The few fields the social card and the page metadata need — one round trip,
+ *  no owner portfolio, no full row. */
+export type PropertyCard = {
+  parid: string;
+  address: string;
+  boro: number;
+  zip_code: string | null;
+  block: number;
+  lot: number;
+  tax_class: string;
+  bldg_class: string | null;
+  fmv: number | null;
+  owner: string | null;
+  owner_norm: string | null;
+  eligible: boolean;
+  on_supplemental: boolean;
+  owner_display: string | null;
+  property_count: number;
+};
+
+export async function getPropertyCard(parid: string): Promise<PropertyCard | null> {
+  const flags = await schemaFlags();
+  return queryOne<PropertyCard>(
+    `SELECT p.parid, p.address, p.boro, p.zip_code, p.block, p.lot,
+            p.tax_class, p.bldg_class, p.fmv, p.owner, p.owner_norm, p.eligible,
+            ${onSupplementalSql(flags)} AS on_supplemental,
+            o.display_name AS owner_display,
+            COALESCE(o.property_count, 1)::int AS property_count
+       FROM properties p
+       LEFT JOIN owners o ON o.owner_norm = p.owner_norm
+      WHERE p.parid = $1`,
+    [parid],
+  );
+}
+
+export async function getOwnerCard(ownerNorm: string): Promise<OwnerSummary | null> {
+  const flags = await schemaFlags();
+  return queryOne<OwnerSummary>(
+    `SELECT o.owner_norm, o.display_name, o.property_count, o.total_fmv,
+            ${ownerCountsSql(flags)}
+       FROM owners o WHERE o.owner_norm = $1`,
+    [ownerNorm],
+  );
+}
+
+/** Sitemap size: the roll has ~1M parcels, which is pointless to submit. Only
+ *  the highest-value parcels and the largest portfolios are listed. */
+export const SITEMAP_PROPERTY_LIMIT = 20_000;
+export const SITEMAP_OWNER_LIMIT = 5_000;
+
+/** Top parcels by DOF value. `fmv IS NOT NULL` keeps this on the
+ *  `properties (fmv DESC)` index instead of sorting the whole table. */
+export async function getTopPropertyIds(limit = SITEMAP_PROPERTY_LIMIT): Promise<string[]> {
+  const flags = await schemaFlags();
+  const rows = await query<{ parid: string }>(
+    `SELECT p.parid
+       FROM properties p
+      WHERE p.fmv IS NOT NULL AND ${onSupplementalSql(flags)}
+      ORDER BY p.fmv DESC
+      LIMIT $1`,
+    [Math.max(1, Math.floor(limit))],
+  );
+  return rows.map((r) => r.parid);
+}
+
+/** Largest portfolios — uses the `owners (property_count DESC)` index. */
+export async function getTopOwnerIds(limit = SITEMAP_OWNER_LIMIT): Promise<string[]> {
+  const rows = await query<{ owner_norm: string }>(
+    `SELECT owner_norm
+       FROM owners
+      ORDER BY property_count DESC, total_fmv DESC
+      LIMIT $1`,
+    [Math.max(1, Math.floor(limit))],
+  );
+  return rows.map((r) => r.owner_norm);
+}
+
+/** Headline figures for the default social card. Deliberately narrower (and
+ *  cheaper) than getStats(): three aggregates over `properties`, no join. */
+export type HeadlineStats = {
+  rollCount: number;
+  rollFmv: number;
+  eligibleCount: number;
+};
+
+export async function getHeadlineStats(): Promise<HeadlineStats | null> {
+  const flags = await schemaFlags();
+  const supp = onSupplementalSql(flags);
+  const row = await queryOne<{
+    roll_count: number;
+    roll_fmv: number | null;
+    eligible_count: number;
+  }>(
+    `SELECT count(*) FILTER (WHERE ${supp})::int AS roll_count,
+            COALESCE(sum(p.fmv) FILTER (WHERE ${supp}), 0) AS roll_fmv,
+            count(*) FILTER (WHERE p.eligible)::int AS eligible_count
+       FROM properties p`,
+  );
+  if (!row || !row.roll_count) return null;
+  return {
+    rollCount: row.roll_count,
+    rollFmv: row.roll_fmv ?? 0,
+    eligibleCount: row.eligible_count,
   };
 }
 
@@ -194,10 +308,14 @@ function toPoints(rows: PointRow[]): MapPoint[] {
  * Two parts, both stable across requests (which is what makes the long cache
  * headers safe):
  *   1. every eligible parcel, so the red marks never pop in and out with zoom;
- *   2. a uniform pseudo-random sample of everything else, ordered by
- *      md5(parid). Uniform — not top-FMV — because a value-weighted sample
- *      makes on-screen density wildly unrepresentative (Staten Island's ~120k
- *      parcels barely registered under the old top-FMV rule).
+ *   2. a uniform pseudo-random sample of everything else — all ~1.17M
+ *      remaining parcels across both the supplemental roll and the wider city
+ *      assessment roll — ordered by md5(parid). Uniform, not top-FMV, because a
+ *      value-weighted sample makes on-screen density wildly unrepresentative
+ *      (Staten Island's ~120k parcels barely registered under the old rule) and
+ *      because sampling the tiers at one rate is what makes the grey/white
+ *      contrast on the map an honest picture of how much of the city is on the
+ *      roll: each tier keeps its true share of the marks.
  */
 export async function getOverviewPoints(limit = OVERVIEW_LIMIT): Promise<MapPoint[]> {
   const lim = Math.min(Math.max(1, Math.floor(limit) || OVERVIEW_LIMIT), POINTS_MAX_LIMIT);
@@ -218,6 +336,17 @@ export async function getOverviewPoints(limit = OVERVIEW_LIMIT): Promise<MapPoin
   return toPoints(rows);
 }
 
+/**
+ * Parcels inside the current viewport, shaped exactly like the citywide
+ * overview: every eligible parcel, then a uniform md5(parid) sample of the
+ * rest. Zooming past DETAIL_ZOOM therefore swaps one point set for another
+ * without the mix of tiers changing character.
+ *
+ * The uniform sample matters most here. Ranking the remainder by FMV — or, as
+ * an earlier cut did, by tier — meant a capped viewport over Staten Island
+ * returned 40,000 white parcels and *zero* grey ones, so the background tier
+ * silently vanished at exactly the zoom where it should start to be legible.
+ */
 export async function getPointsInBbox(
   minLng: number,
   minLat: number,
@@ -227,14 +356,18 @@ export async function getPointsInBbox(
 ): Promise<MapPoint[]> {
   const lim = Math.min(Math.max(1, Math.floor(limit) || 20_000), POINTS_MAX_LIMIT);
   const flags = await schemaFlags();
+  const tier = tierSql(flags);
+  const box = `p.longitude BETWEEN $1 AND $3 AND p.latitude BETWEEN $2 AND $4`;
   const rows = await query<PointRow>(
-    `SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid,
-            ${tierSql(flags)} AS tier
-       FROM properties p
-      WHERE p.longitude BETWEEN $1 AND $3
-        AND p.latitude BETWEEN $2 AND $4
-      ORDER BY ${tierSql(flags)} DESC, p.fmv DESC NULLS LAST, p.parid
-      LIMIT $5`,
+    `(SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid, ${tier} AS tier
+        FROM properties p
+       WHERE ${box} AND p.eligible)
+     UNION ALL
+     (SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid, ${tier} AS tier
+        FROM properties p
+       WHERE ${box} AND NOT p.eligible
+       ORDER BY md5(p.parid)
+       LIMIT $5)`,
     [minLng, minLat, maxLng, maxLat, lim],
   );
   return toPoints(rows);
@@ -250,13 +383,17 @@ export async function getStats(): Promise<StatsResponse> {
       eligible_count: number;
       eligible_fmv: number | null;
       supplemental_count: number;
+      supplemental_fmv: number | null;
     }>(
+      // One pass over `properties` produces all three tiers' counts and FMV
+      // sums; the FILTER clauses are free next to the scan itself.
       `SELECT count(*)::int AS properties,
               count(p.longitude)::int AS with_coords,
               COALESCE(sum(p.fmv), 0) AS total_fmv,
               count(*) FILTER (WHERE p.eligible)::int AS eligible_count,
               COALESCE(sum(p.fmv) FILTER (WHERE p.eligible), 0) AS eligible_fmv,
-              count(*) FILTER (WHERE ${onSupplementalSql(flags)})::int AS supplemental_count
+              count(*) FILTER (WHERE ${onSupplementalSql(flags)})::int AS supplemental_count,
+              COALESCE(sum(p.fmv) FILTER (WHERE ${onSupplementalSql(flags)}), 0) AS supplemental_fmv
          FROM properties p`,
     ),
     queryOne<{ owners: number; multi_owners: number }>(
@@ -265,20 +402,24 @@ export async function getStats(): Promise<StatsResponse> {
          FROM owners`,
     ),
     query<OwnerSummary>(
-      `SELECT owner_norm, display_name, property_count, total_fmv
-         FROM owners
-        ORDER BY property_count DESC, total_fmv DESC, owner_norm
+      `SELECT o.owner_norm, o.display_name, o.property_count, o.total_fmv,
+              ${ownerCountsSql(flags)}
+         FROM owners o
+        ORDER BY o.property_count DESC, o.total_fmv DESC, o.owner_norm
         LIMIT 20`,
     ),
   ]);
 
+  const allProperties = props?.properties ?? 0;
   return {
-    properties: props?.properties ?? 0,
+    allProperties,
+    properties: allProperties,
     withCoords: props?.with_coords ?? 0,
     owners: owners?.owners ?? 0,
     multiOwners: owners?.multi_owners ?? 0,
     totalFmv: props?.total_fmv ?? 0,
     supplementalCount: props?.supplemental_count ?? 0,
+    supplementalFmv: props?.supplemental_fmv ?? 0,
     eligibleCount: props?.eligible_count ?? 0,
     eligibleFmv: props?.eligible_fmv ?? 0,
     topOwners,

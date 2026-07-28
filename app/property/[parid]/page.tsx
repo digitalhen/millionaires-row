@@ -3,10 +3,19 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import AboutNote from '@/components/AboutNote';
 import EligibleBadge, { NotOnRollNote } from '@/components/EligibleBadge';
+import JsonLd from '@/components/JsonLd';
 import MiniMap from '@/components/MiniMap';
+import OwnerCounts from '@/components/OwnerCounts';
 import PropertyTable from '@/components/PropertyTable';
 import TopBar from '@/components/TopBar';
-import { getProperty } from '@/lib/queries';
+import { getProperty, getPropertyCard } from '@/lib/queries';
+import {
+  SITE_NAME,
+  absoluteUrl,
+  decodeParam,
+  ownerPath,
+  propertyPath,
+} from '@/lib/seo';
 import {
   boroName,
   buildingClassLabel,
@@ -23,13 +32,40 @@ type Params = { params: Promise<{ parid: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { parid } = await params;
-  const data = await getProperty(decodeURIComponent(parid));
-  if (!data) return { title: "Not found — Millionaires' Row" };
+  const p = await getPropertyCard(decodeParam(parid).trim());
+  if (!p) {
+    return { title: 'Record not found', robots: { index: false, follow: true } };
+  }
+
+  const title = p.fmv != null ? `${p.address} — ${money(p.fmv)}` : p.address;
+  const bldg = buildingClassLabel(p.bldg_class);
+  const description = [
+    `${p.address}, ${boroName(p.boro)}.`,
+    `Owner of record: ${p.owner_norm ? p.owner_display || p.owner : 'none on file'}.`,
+    `DOF full market value ${money(p.fmv)}.`,
+    `Tax class ${p.tax_class}${
+      p.bldg_class ? `, building class ${p.bldg_class}${bldg ? ` (${bldg})` : ''}` : ''
+    }.`,
+    p.eligible
+      ? "This parcel may be subject to NYC's non-primary residence surcharge."
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const url = absoluteUrl(propertyPath(p.parid));
   return {
-    title: `${data.property.address}, ${boroName(data.property.boro)} — Millionaires' Row`,
-    description: `${data.property.address} — DOF full market value ${money(
-      data.property.fmv,
-    )}. Owner: ${data.property.owner ?? 'not on file'}.`,
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: 'website',
+      url,
+      siteName: SITE_NAME,
+      title: `${title} | ${SITE_NAME}`,
+      description,
+    },
+    twitter: { card: 'summary_large_image', title: `${title} | ${SITE_NAME}`, description },
   };
 }
 
@@ -54,7 +90,7 @@ const DASH = <span style={{ color: 'var(--grey-2)' }}>—</span>;
 
 export default async function PropertyPage({ params }: Params) {
   const { parid } = await params;
-  const data = await getProperty(decodeURIComponent(parid).trim());
+  const data = await getProperty(decodeParam(parid).trim());
   if (!data) notFound();
 
   const { property: p, owner, otherProperties } = data;
@@ -65,8 +101,82 @@ export default async function PropertyPage({ params }: Params) {
       ? `${p.housenum_lo ?? ''}–${p.housenum_hi}`
       : p.housenum_lo || null;
 
+  const url = absoluteUrl(propertyPath(p.parid));
+  /**
+   * Structured data. A parcel is modelled as a `Place` (the roll covers houses,
+   * condo units and co-op shares alike, so a more specific residence type would
+   * be a guess) with the DOF valuation as a `PropertyValue` — it is an
+   * assessment estimate, not an offer, so it is deliberately not an `Offer`.
+   */
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Place',
+    '@id': url,
+    url,
+    name: p.address,
+    description: `${p.address}, ${boroName(p.boro)} — New York City Department of Finance 2027 supplemental property roll record.`,
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: p.address,
+      addressLocality: boroName(p.boro),
+      addressRegion: 'NY',
+      postalCode: p.zip_code || undefined,
+      addressCountry: 'US',
+    },
+    geo: hasCoords
+      ? {
+          '@type': 'GeoCoordinates',
+          latitude: p.latitude,
+          longitude: p.longitude,
+        }
+      : undefined,
+    identifier: [
+      { '@type': 'PropertyValue', name: 'BBL', value: formatBbl(p.boro, p.block, p.lot) },
+      { '@type': 'PropertyValue', name: 'PARID', value: p.parid },
+    ],
+    additionalProperty: [
+      {
+        '@type': 'PropertyValue',
+        name: 'DOF full market value',
+        value: p.fmv ?? undefined,
+        unitCode: 'USD',
+        description: `New York City Department of Finance full market value estimate, tax year ${p.tax_year}`,
+      },
+      { '@type': 'PropertyValue', name: 'Tax class', value: p.tax_class },
+      p.bldg_class
+        ? {
+            '@type': 'PropertyValue',
+            name: 'Building class',
+            value: p.bldg_class,
+            description: bldgLabel ?? undefined,
+          }
+        : undefined,
+      {
+        '@type': 'PropertyValue',
+        name: 'On the 2027 supplemental roll',
+        value: p.on_supplemental,
+      },
+      {
+        '@type': 'PropertyValue',
+        name: "May be subject to NYC's non-primary residence surcharge",
+        value: p.eligible,
+      },
+      // schema.org has no `owner` on Place, and the roll mixes people with
+      // companies, so the owner of record travels as a plain value.
+      owner
+        ? {
+            '@type': 'PropertyValue',
+            name: 'Owner of record',
+            value: owner.display_name,
+            url: absoluteUrl(ownerPath(owner.owner_norm)),
+          }
+        : undefined,
+    ].filter(Boolean),
+  };
+
   return (
     <div className="page">
+      <JsonLd data={jsonLd} />
       <TopBar crumb="Property" />
 
       <div className="detail-head">
@@ -148,11 +258,13 @@ export default async function PropertyPage({ params }: Params) {
           )}
         </div>
         {owner ? (
-          <div className="grid" style={{ marginTop: 14 }}>
-            <Cell label="Normalized name" value={owner.owner_norm} dim />
-            <Cell label="Properties on this roll" value={num(owner.property_count)} />
-            <Cell label="Combined full market value" value={money(owner.total_fmv)} />
-          </div>
+          <>
+            <OwnerCounts owner={owner} />
+            <div className="grid" style={{ marginTop: 14 }}>
+              <Cell label="Normalized name" value={owner.owner_norm} dim />
+              <Cell label="Combined full market value" value={money(owner.total_fmv)} />
+            </div>
+          </>
         ) : (
           <p className="crumb" style={{ marginTop: 10, textTransform: 'none' }}>
             The roll carries {p.owner ? `“${p.owner}”` : 'a blank'} here, which is a

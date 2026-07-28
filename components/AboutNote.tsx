@@ -14,8 +14,17 @@ export default function AboutNote({ compact = false }: { compact?: boolean }) {
         <strong>About this data.</strong> Source: the New York City Department of
         Finance <strong>2027 supplemental property roll</strong> — a public
         record listing properties that may fall within the scope of the
-        non-primary-residence (&ldquo;pied-à-terre&rdquo;) surcharge. Owner names
-        and addresses are reproduced as published by DOF.
+        non-primary-residence (&ldquo;pied-à-terre&rdquo;) surcharge — shown
+        against the full FY27 assessment roll of every parcel in the city. Owner
+        names and addresses are reproduced as published by DOF.
+      </p>
+      <p>
+        Parcels drawn in{' '}
+        <span style={{ color: 'var(--tier-city)' }}>grey</span> are on the city
+        assessment roll but <em>not</em> on the supplemental roll; white parcels
+        are on the supplemental roll. Grey is context, not a judgement — a great
+        deal of the city (airports, parks, offices, most commercial property) was
+        never in scope for this surcharge in the first place.
       </p>
       <p>
         Parcels marked in <span style={{ color: 'var(--red)' }}>red</span> match

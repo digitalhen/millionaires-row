@@ -31,7 +31,13 @@ export type Property = {
 export type OwnerSummary = {
   owner_norm: string;
   display_name: string;
+  /** every parcel held, city-wide — what the ▣ badge counts */
   property_count: number;
+  /** of those, how many are on the 2027 supplemental roll. Optional because
+   *  lightweight lookups (social cards) skip it and older schemas lack it. */
+  roll_count?: number;
+  /** of those, how many match DOF's surcharge criteria */
+  eligible_count?: number;
   total_fmv: number;
 };
 
@@ -85,16 +91,24 @@ export type OwnerResponse = {
 export type MapTier = 0 | 1 | 2;
 export type MapPoint = [number, number, number | null, string, MapTier];
 
+/**
+ * The three tiers, counted. `allProperties >= supplementalCount >=
+ * eligibleCount`, and each `*Fmv` is the FMV sum over the same set.
+ */
 export type StatsResponse = {
+  /** tier 1 — every NYC parcel on the FY27 assessment roll */
+  allProperties: number;
+  /** alias of `allProperties`, kept for callers written before the city roll */
   properties: number;
   withCoords: number;
   owners: number;
   multiOwners: number;
+  /** FMV of every NYC parcel */
   totalFmv: number;
-  /** parcels on the 2027 supplemental roll (equals `properties` until the
-   *  full city roll is loaded) */
+  /** tier 2 — parcels on the 2027 supplemental roll */
   supplementalCount: number;
-  /** parcels matching DOF's surcharge criteria */
+  supplementalFmv: number;
+  /** tier 3 — parcels matching DOF's surcharge criteria */
   eligibleCount: number;
   eligibleFmv: number;
   topOwners: OwnerSummary[];

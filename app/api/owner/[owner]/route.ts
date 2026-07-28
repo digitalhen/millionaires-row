@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOwner } from '@/lib/queries';
+import { decodeParam } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ export async function GET(
 ) {
   const { owner } = await params;
   try {
-    const data = await getOwner(decodeURIComponent(owner).trim());
+    const data = await getOwner(decodeParam(owner).trim());
     if (!data) {
       return NextResponse.json({ error: 'owner not found' }, { status: 404 });
     }

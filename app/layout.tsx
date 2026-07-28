@@ -1,16 +1,59 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import { SITE_URL } from '@/lib/basePath';
+import {
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TAGLINE,
+  absoluteUrl,
+} from '@/lib/seo';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './globals.css';
 
 const GA_ID = 'G-71RFY7NQVZ';
 
+/**
+ * Site-wide metadata. Pages supply their own title/description/canonical and
+ * inherit the rest; the Open Graph image comes from the colocated
+ * `opengraph-image.tsx` of the closest segment.
+ */
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Millionaires' Row — NYC pied-à-terre tax roll",
-  description:
-    "Search and map the ~960,000 New York City properties on the Department of Finance's 2027 supplemental property roll.",
+  title: {
+    default: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: [
+    'pied-à-terre tax',
+    'NYC property tax',
+    'non-primary residence surcharge',
+    'NYC Department of Finance',
+    '2027 supplemental roll',
+    'NYC property owner search',
+    'full market value',
+  ],
+  category: 'reference',
+  formatDetection: { telephone: false, address: false, email: false },
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    locale: 'en_US',
+    url: absoluteUrl('/'),
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+  },
 };
 
 export const viewport: Viewport = {

@@ -82,34 +82,38 @@ export default function HomeView({ stats }: { stats: StatsResponse | null }) {
         <div className="hero">
           <h1>Millionaires&rsquo; Row</h1>
           <p className="tagline">
-            Every property on the New York City Department of Finance 2027
-            supplemental roll — the parcels within reach of the
-            non-primary-residence surcharge. Search any name or address.
+            Every property in New York City, and the ones the Department of
+            Finance put on its 2027 supplemental roll — the parcels within reach
+            of the non-primary-residence surcharge. Search any name or address.
           </p>
-          <SearchBox autoFocus onSelect={(r) => select(r.parid)} />
+          <SearchBox autoFocus syncQueryParam onSelect={(r) => select(r.parid)} />
           {stats && (
-            <div className="hero-stats">
-              <span>
-                <b>{num(stats.properties)}</b> parcels
-              </span>
-              {stats.supplementalCount < stats.properties && (
+            <>
+              {/* The three tiers, in the order the map draws them: the whole
+                  city, then the roll, then the parcels that may be taxed. */}
+              <div className="hero-stats">
+                <span>
+                  <b>{num(stats.allProperties)}</b> NYC properties
+                </span>
                 <span>
                   <b>{num(stats.supplementalCount)}</b> on the supplemental roll
                 </span>
-              )}
-              <span>
-                <b>{num(stats.owners)}</b> owners
-              </span>
-              <span>
-                <b>{num(stats.multiOwners)}</b> hold more than one
-              </span>
-              <span className="stat-eligible">
-                <b>{num(stats.eligibleCount)}</b> may be subject
-              </span>
-              <span>
-                <b>{moneyCompact(stats.totalFmv)}</b> full market value
-              </span>
-            </div>
+                <span className="stat-eligible">
+                  <b>{num(stats.eligibleCount)}</b> may be subject
+                </span>
+              </div>
+              <div className="hero-stats hero-stats--sub">
+                <span>
+                  <b>{num(stats.owners)}</b> owners
+                </span>
+                <span>
+                  <b>{num(stats.multiOwners)}</b> hold more than one
+                </span>
+                <span>
+                  <b>{moneyCompact(stats.totalFmv)}</b> full market value
+                </span>
+              </div>
+            </>
           )}
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getProperty } from '@/lib/queries';
+import { decodeParam } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ export async function GET(
 ) {
   const { parid } = await params;
   try {
-    const data = await getProperty(decodeURIComponent(parid).trim());
+    const data = await getProperty(decodeParam(parid).trim());
     if (!data) {
       return NextResponse.json({ error: 'property not found' }, { status: 404 });
     }

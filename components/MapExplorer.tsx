@@ -8,6 +8,7 @@ import {
   EMPTY_FC,
   NYC_BOUNDS,
   NYC_CENTER,
+  OVERVIEW_VERSION,
   baseStyle,
   highlightLayer,
   hitLayer,
@@ -86,7 +87,11 @@ export default function MapExplorer({
         if (modeRef.current === 'overview') return;
         if (!overviewRef.current) {
           setStatus('Loading citywide overview…');
-          const res = await fetch(withBaseVersioned('/api/map/overview'), { signal: ac.signal });
+          // ?s= pins the sampling rule on top of the per-build ?v=, so a cached
+          // payload from an older point set can never be reused.
+          const res = await fetch(withBaseVersioned(`/api/map/overview?s=${OVERVIEW_VERSION}`), {
+            signal: ac.signal,
+          });
           if (!res.ok) throw new Error(`overview ${res.status}`);
           overviewRef.current = (await res.json()) as MapPoint[];
         }

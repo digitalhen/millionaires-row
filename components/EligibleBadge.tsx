@@ -21,6 +21,24 @@ export function EligibleMark() {
   );
 }
 
+/**
+ * Table-density counterpart to `EligibleMark`: a hollow grey square for a
+ * parcel that is in the city assessment roll only. Same glyph family as the
+ * red ■ and the same grey the map paints those parcels in, so the three tiers
+ * carry one visual vocabulary across map, list and table.
+ */
+export function NotOnRollMark() {
+  return (
+    <span
+      className="not-on-roll-mark"
+      aria-label="Not on the supplemental roll"
+      title="Present in the city assessment roll but not in the 2027 supplemental roll"
+    >
+      □
+    </span>
+  );
+}
+
 /** Muted marker for parcels that are on the city roll but not the supplemental one. */
 export function NotOnRollNote({ inline = false }: { inline?: boolean }) {
   const text = 'Not on supplemental roll';

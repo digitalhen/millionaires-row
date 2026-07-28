@@ -54,6 +54,18 @@ export function onSupplementalSql(flags: SchemaFlags, alias = 'p'): string {
 }
 
 /**
+ * SELECT fragment for an owner's per-tier holdings counts. Before the pipeline
+ * adds the columns every holding is by definition on the supplemental roll, so
+ * `roll_count` degrades to the total and `eligible_count` to 0 (which the UI
+ * reads as "nothing extra to say").
+ */
+export function ownerCountsSql(flags: SchemaFlags, alias = 'o'): string {
+  return flags.hasOwnerRollCounts
+    ? `${alias}.roll_count::int AS roll_count, ${alias}.eligible_count::int AS eligible_count`
+    : `${alias}.property_count::int AS roll_count, 0 AS eligible_count`;
+}
+
+/**
  * Render tier: 0 = every-NYC-property background, 1 = on the supplemental roll,
  * 2 = matches the surcharge criteria.
  */

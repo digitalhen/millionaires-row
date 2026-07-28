@@ -4,6 +4,15 @@ import { withBaseVersioned } from './basePath';
 
 export const BOROUGHS_GEOJSON = withBaseVersioned('/geo/nyc-boroughs.geojson');
 
+/**
+ * Bumped whenever the citywide overview payload's shape or sampling rule
+ * changes. The client appends it to the request URL alongside the per-build
+ * `?v=`, so a browser or CDN holding a long-cached copy from an older point set
+ * can never serve it back. 3 = three tiers, one uniform sample across all 1.2M
+ * NYC parcels.
+ */
+export const OVERVIEW_VERSION = 3;
+
 /** NYC, roughly. Used as the initial camera and as a clamp on panning. */
 export const NYC_CENTER: [number, number] = [-73.95, 40.705];
 export const NYC_BOUNDS: [[number, number], [number, number]] = [
@@ -73,24 +82,7 @@ export const TIER_COLORS = {
  * layoutVertexArray.length / 4"). Circle layers have no such limit and stay
  * smooth at 100k+ points; at these radii (1–6px) a dot and a square are
  * visually interchangeable.
- *
- * Radius steps up subtly with FMV so expensive parcels carry a little more
- * weight without becoming blobs.
  */
-const FMV_FACTOR = [
-  'interpolate',
-  ['linear'],
-  ['coalesce', ['get', 'v'], 0],
-  0,
-  0.85,
-  1_000_000,
-  1,
-  5_000_000,
-  1.2,
-  50_000_000,
-  1.7,
-];
-
 const FMV_OPACITY = [
   'interpolate',
   ['linear'],
@@ -106,25 +98,34 @@ const FMV_OPACITY = [
 ];
 
 /** `zoom` is only legal as the input of a *top-level* interpolate, so the
- *  per-feature multipliers have to live inside each output stop. */
-const radiusAtZoom = (base: number) => ['*', base, FMV_FACTOR];
+ *  per-feature multiplier has to live inside each output stop. */
 const opacityAtZoom = (factor: number) => ['*', factor, FMV_OPACITY];
 
-/** Identical for every tier — colour is the only difference. */
+/**
+ * Radius is a function of zoom and nothing else — one parcel, one dot, exactly
+ * the same size in all three tiers.
+ *
+ * It used to scale a little with FMV, which sounds neutral but is not: the red
+ * tier is $1M-and-up by definition, so every red mark landed at the top of that
+ * ramp and the surcharge tier rendered as physically bigger than the city
+ * around it. A map whose job is to show how *small* that tier is cannot afford
+ * that. Weight by value now lives entirely in opacity, where a brighter dot
+ * still reads as a more valuable parcel but never as more parcels.
+ */
 const RADIUS_RAMP = [
   'interpolate',
   ['linear'],
   ['zoom'],
   8,
-  radiusAtZoom(0.9),
+  0.9,
   11,
-  radiusAtZoom(1.15),
+  1.15,
   13,
-  radiusAtZoom(1.7),
+  1.7,
   16,
-  radiusAtZoom(3),
+  3,
   19,
-  radiusAtZoom(5.5),
+  5.5,
 ];
 
 /** Dim everything at citywide zooms so dense boroughs stay readable instead of
@@ -139,6 +140,19 @@ const opacityRamp = (low: number, mid: number, high: number) => [
   opacityAtZoom(mid),
   13,
   opacityAtZoom(high),
+];
+
+/** Zoom-only opacity, for the tiers where per-parcel value carries no meaning. */
+const flatRamp = (low: number, mid: number, high: number) => [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  8,
+  low,
+  11,
+  mid,
+  13,
+  high,
 ];
 
 const tierIs = (t: number) => ['==', ['get', 'e'], t];
@@ -171,19 +185,16 @@ function tierLayer(
  */
 export function propertyLayers(source: string): LayerSpecification[] {
   return [
-    tierLayer(`${source}-city`, source, 0, TIER_COLORS.city, opacityRamp(0.5, 0.6, 0.7)),
+    // Zoom-only opacity: an airport, a park and a vacant lot are all just
+    // context here, and running the background tier through the FMV ramp as
+    // well dimmed most of it to roughly RGB 21 — present in the buffer,
+    // invisible on screen. Flat and a little stronger, #4d4d4d still lands
+    // well under the faintest white, so grey reads as ground, not as data.
+    tierLayer(`${source}-city`, source, 0, TIER_COLORS.city, flatRamp(0.6, 0.72, 0.85)),
     tierLayer(`${source}-roll`, source, 1, TIER_COLORS.roll, opacityRamp(0.6, 0.74, 0.88)),
     // Slightly held back at citywide zoom so the red corridor reads as a
     // pattern rather than a wall, then full strength once you are in close.
-    tierLayer(`${source}-eligible`, source, 2, TIER_COLORS.eligible, [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      8,
-      0.82,
-      12,
-      1,
-    ]),
+    tierLayer(`${source}-eligible`, source, 2, TIER_COLORS.eligible, flatRamp(0.82, 1, 1)),
   ];
 }
 

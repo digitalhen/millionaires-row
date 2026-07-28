@@ -19,9 +19,15 @@ const LIMIT = 10;
 
 export default function SearchBox({
   autoFocus = false,
+  syncQueryParam = false,
   onSelect,
 }: {
   autoFocus?: boolean;
+  /** Seed the field from `?q=` on mount. Backs the sitelinks SearchAction
+   *  declared in the home page's structured data, so `/?q=park+avenue` lands
+   *  on a pre-filled search. Read in an effect, never during render, so the
+   *  server and client markup still match. */
+  syncQueryParam?: boolean;
   /** When supplied, choosing a result hands it to the caller (the home page
    *  opens the details panel) instead of navigating to the property page. */
   onSelect?: (result: SearchResult) => void;
@@ -35,6 +41,15 @@ export default function SearchBox({
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState(-1);
   const boxRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!syncQueryParam) return;
+    const seed = new URLSearchParams(window.location.search).get('q');
+    if (seed && seed.trim()) {
+      setQ(seed.trim());
+      setOpen(true);
+    }
+  }, [syncQueryParam]);
 
   useEffect(() => {
     const term = q.trim();
