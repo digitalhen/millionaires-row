@@ -15,8 +15,12 @@ OUT=data/seed/mrow.dump
 
 mkdir -p data/seed
 
-echo "==> pg_dump -Fc $DB -> $OUT"
+# pluto_coords is a pipeline intermediate (~857k rows, ~67 MB) that the app never
+# reads; it is excluded to keep the production seed small. Re-create it locally
+# with scripts/geocode.sh if you need to re-geocode.
+echo "==> pg_dump -Fc $DB -> $OUT (excluding pluto_coords)"
 docker exec -i "$CONTAINER" pg_dump -U mrow -d "$DB" -Fc --no-owner --no-acl \
+  --exclude-table=public.pluto_coords \
   > "${OUT}.part"
 mv "${OUT}.part" "$OUT"
 

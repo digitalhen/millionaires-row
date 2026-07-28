@@ -132,13 +132,14 @@ SELECT
   nullif(btrim(condo_number), ''),
   nullif(btrim(fmv), '')::bigint,
   -- address: "<housenum_lo> <street_name>[, APT <aptno>]", upper, single-spaced.
-  -- 'RES' is a roll-internal marker for the residential portion of a parcel,
-  -- not an apartment number, so it is not emitted (matches scripts/dev_sample.sh).
+  -- 'RES'/'RESI' are roll-internal markers for the residential portion of a
+  -- parcel, not apartment numbers, so they are not emitted. Matched exactly
+  -- (not as a RES% prefix) so real unit strings like 'RES1' or 'RESD' survive.
   btrim(regexp_replace(
     upper(
       btrim(concat_ws(' ', nullif(btrim(housenum_lo), ''), nullif(btrim(street_name), '')))
       || CASE WHEN nullif(btrim(aptno), '') IS NOT NULL
-                   AND upper(btrim(aptno)) <> 'RES'
+                   AND upper(btrim(aptno)) NOT IN ('RES', 'RESI')
               THEN ', APT ' || btrim(aptno) ELSE '' END
     ), '\s+', ' ', 'g'))                                    AS address,
   NULL::double precision,
@@ -154,6 +155,21 @@ SQL
 
 LOADED=$("${PSQL[@]}" -tAd "$DB" -c "SELECT count(*) FROM properties;")
 echo "==> properties rows: $LOADED"
+
+# --- eligible flag -----------------------------------------------------------
+# Best-effort match of DOF's stated surcharge criteria (see scripts/schema.sql):
+# 1-3 family homes (class A*/B*/C0) over $5M, or condo units (R*) / co-op units
+# (synthetic '-U' parid) at $1M or more. Run as a post-load UPDATE because the
+# co-op-unit test depends on the parid synthesized above.
+echo "==> flagging eligible properties"
+"${PSQL[@]}" -d "$DB" <<'SQL'
+UPDATE properties SET eligible = true
+WHERE (tax_class LIKE '1%'
+       AND (bldg_class LIKE 'A%' OR bldg_class LIKE 'B%' OR bldg_class = 'C0')
+       AND fmv > 5000000)
+   OR (bldg_class LIKE 'R%' AND fmv >= 1000000)
+   OR (parid LIKE '%-U%' AND fmv >= 1000000);
+SQL
 
 echo "==> dropping staging table"
 "${PSQL[@]}" -d "$DB" -c "DROP TABLE staging_roll;" >/dev/null
@@ -176,7 +192,8 @@ SELECT boro, count(*) FROM properties GROUP BY 1 ORDER BY 1;
 SELECT count(*) FILTER (WHERE owner_norm IS NULL) AS null_owner_norm,
        count(*) FILTER (WHERE fmv IS NULL)        AS null_fmv,
        count(*) FILTER (WHERE address = '')       AS empty_address,
-       count(*) FILTER (WHERE lot >= 1001)        AS condo_unit_lots
+       count(*) FILTER (WHERE lot >= 1001)        AS condo_unit_lots,
+       count(*) FILTER (WHERE eligible)           AS eligible
 FROM properties;
 SQL
 

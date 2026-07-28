@@ -51,7 +51,7 @@ SELECT
   nullif(coop_num,''), nullif(condo_number,''),
   nullif(fmv,'')::bigint,
   regexp_replace(upper(btrim(concat_ws(' ', nullif(housenum_lo,''), nullif(street_name,''))
-    || CASE WHEN nullif(aptno,'') IS NOT NULL AND upper(aptno) <> 'RES' THEN ', APT ' || aptno ELSE '' END)), '\s+', ' ', 'g'),
+    || CASE WHEN nullif(aptno,'') IS NOT NULL AND upper(btrim(aptno)) NOT IN ('RES','RESI') THEN ', APT ' || aptno ELSE '' END)), '\s+', ' ', 'g'),
   -- FAKE coordinates for dev only: random point in NYC bbox
   40.50 + random() * 0.42,
   -74.25 + random() * 0.55,

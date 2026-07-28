@@ -55,6 +55,8 @@ CREATE INDEX IF NOT EXISTS owners_count            ON owners (property_count DES
 -- supports /api/property/{parid} -> "this owner's other properties" and
 -- /api/owner/{owner_norm}
 CREATE INDEX IF NOT EXISTS properties_owner_norm   ON properties (owner_norm);
+-- partial index for the surcharge-eligible subset (set in scripts/import.sh)
+CREATE INDEX IF NOT EXISTS properties_eligible     ON properties (eligible) WHERE eligible;
 SQL
 
 echo "==> ANALYZE"
