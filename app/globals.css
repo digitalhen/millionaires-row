@@ -720,6 +720,83 @@ table.ledger td.num-eligible {
   color: var(--red);
 }
 
+/* ---------- in this building ---------- */
+
+/* Header line of the building section: the aggregate record (or, for a
+   condominium, a bare unit count) above the table of units. */
+.bldg-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0 0 12px;
+}
+
+.bldg-line .bldg-addr {
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* 1 Irving Place is 651 units; even capped at 200 that is an 8,000px table, and
+   everything below it — classification, owner, the map — went out of reach. The
+   list is context for the parcel, not the record itself, so it is bounded to a
+   screenful and scrolls against a sticky header. */
+.bldg-scroll {
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.bldg-scroll table.ledger th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.bldg-more {
+  margin: 10px 0 0;
+}
+
+.bldg-note {
+  margin: 10px 0 0;
+  color: var(--grey-2);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+}
+
+/* Two narrow columns (apartment, value). The wide ledgers hold a 620px floor
+   (420px on a phone) so their five columns stay legible inside their own
+   scroller; applied here it pushed the money column off the right of a 390px
+   screen, which is the one thing the unit table exists to show. Doubled class
+   so it also outranks the narrower floor set later, in the responsive block. */
+table.ledger.ledger--tight {
+  min-width: 0;
+}
+
+/* On a phone the apartment link grows to a 44px tap target, which drops it
+   below the money it is paired with. Centre the pair instead of top-aligning. */
+table.ledger.ledger--tight td {
+  vertical-align: middle;
+}
+
+/* The building block inside the map panel, ruled off from the parcel above it. */
+.panel-bldg {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--grey-3);
+}
+
+.panel-bldg h3 {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+  margin-bottom: 10px;
+}
+
 .mini-map {
   height: 260px;
   border: 1px solid var(--grey-3);

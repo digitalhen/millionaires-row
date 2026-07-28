@@ -84,10 +84,27 @@ To refresh data later: rebuild the dump locally (`scripts/` pipeline), commit
 it, push, then on each instance drop the `pgdata` volume (or
 `DROP TABLE properties, owners` and re-run the seed service) and redeploy.
 
+### Health check
+
+`GET /api/health` → `200 {"ok":true,"db":true,"buildId":"…"}`. It is the
+Compose health check for the `app` service and never rate limited.
+
+It reports *liveness*: 200 means the Node process can still serve requests,
+and `db` says whether Postgres answered within a second. A database outage
+shows as `db:false` with a 200 — restarting the app would not fix Postgres,
+and taking the container out of rotation for it would only lose the pages that
+still work. Alert on `db:false`, not on the status code.
+
+The JSON API is rate limited per client IP (30 req/s sustained, burst 60,
+first hop of `X-Forwarded-For`); over-budget callers get a `429` with
+`Retry-After`. `/api/health` and `/api/map/overview` are exempt. Tune with
+`RATE_LIMIT_RPS` / `RATE_LIMIT_BURST`; `RATE_LIMIT_RPS=0` disables it.
+
 Local production rehearsal:
 
 ```bash
 docker compose -p mrow-prod up -d --build
+docker exec mrow-prod-app-1 wget -qO- http://127.0.0.1:3000/api/health
 docker exec mrow-prod-app-1 wget -qO- http://127.0.0.1:3000/api/stats
 ```
 

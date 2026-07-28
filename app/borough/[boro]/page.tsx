@@ -25,7 +25,29 @@ import {
   zipPath,
 } from '@/lib/seo';
 
-export const dynamic = 'force-dynamic';
+/**
+ * Rendered once per borough, then served from Next's route cache.
+ *
+ * The roll is read-only for the life of a deploy, so this page's HTML is the
+ * same for every visitor until the next one — the figures behind it were
+ * already memoised, but the ~100kB of table markup was being re-rendered per
+ * request. The hour is arbitrary and generous; nothing under it changes.
+ *
+ * Both exports are needed, and the empty one is the load-bearing half.
+ * `revalidate` alone is inert on a dynamic segment: with no
+ * `generateStaticParams` at all, Next registers no fallback for the route, it
+ * never reaches the prerender manifest, and every request re-renders (checked
+ * against the manifest, not assumed). Declaring it *empty* registers the
+ * fallback without naming a single path to build, which is what keeps
+ * `next build` off the database — the Docker image is built with a dummy
+ * DATABASE_URL, so anything listed here would be rendered against a database
+ * that is not there.
+ */
+export const revalidate = 3600;
+
+export function generateStaticParams(): { boro: string }[] {
+  return [];
+}
 
 type Params = { params: Promise<{ boro: string }> };
 

@@ -6,38 +6,18 @@ import {
   schemaFlags,
 } from './schema';
 import { isNycZip } from './format';
+import { memoize } from './memo';
 import type { OwnerSummary } from './types';
 
 /**
  * Aggregates for the leaderboard, borough and ZIP pages.
  *
  * Every figure here is derived from a roll that is loaded once and never
- * written to, so all of it is static for the life of the process. Results are
- * memoised on the module the same way `schemaFlags()` memoises its probe: the
- * promise is stored, so N concurrent requests for the same borough share one
- * round trip rather than racing, and a rejected promise is evicted so a
- * transient database error is not cached forever.
- *
- * The key space is bounded by the data: one leaderboard, five boroughs, ~240
- * ZIPs, one ZIP directory.
+ * written to, so all of it is static for the life of the process and is held by
+ * `lib/memo` — see there for why the promise rather than the value is stored,
+ * and `resetMemo()` for the test seam. The key space is bounded by the data:
+ * one leaderboard, five boroughs, ~240 ZIPs, one ZIP directory.
  */
-const memo = new Map<string, Promise<unknown>>();
-
-function cached<T>(key: string, run: () => Promise<T>): Promise<T> {
-  const hit = memo.get(key) as Promise<T> | undefined;
-  if (hit) return hit;
-  const pending = run().catch((err) => {
-    memo.delete(key);
-    throw err;
-  });
-  memo.set(key, pending);
-  return pending;
-}
-
-/** Test seam / after a data reload in a long-lived process. */
-export function resetAggregates(): void {
-  memo.clear();
-}
 
 export const LEADERBOARD_OWNER_LIMIT = 50;
 export const LEADERBOARD_PROPERTY_LIMIT = 100;
@@ -121,7 +101,7 @@ function toAreaStats(row: AreaRow | null): AreaStats | null {
 /* ---------------------------------------------------------------- boroughs */
 
 export function getBoroughStats(boro: number): Promise<AreaStats | null> {
-  return cached(`boro:stats:${boro}`, async () => {
+  return memoize(`boro:stats:${boro}`, async () => {
     const flags = await schemaFlags();
     const row = await queryOne<AreaRow>(
       areaStatsSql(onSupplementalSql(flags), 'p.boro = $1'),
@@ -164,7 +144,7 @@ export function getBoroughTopOwners(
   boro: number,
   limit = AREA_OWNER_LIMIT,
 ): Promise<LocalOwner[]> {
-  return cached(`boro:owners:${boro}:${limit}`, async () => {
+  return memoize(`boro:owners:${boro}:${limit}`, async () => {
     const flags = await schemaFlags();
     return query<LocalOwner>(
       topOwnersSql(onSupplementalSql(flags), 'p.boro = $1', '$2'),
@@ -177,7 +157,7 @@ export function getBoroughTopProperties(
   boro: number,
   limit = AREA_PROPERTY_LIMIT,
 ): Promise<RankedProperty[]> {
-  return cached(`boro:props:${boro}:${limit}`, async () => {
+  return memoize(`boro:props:${boro}:${limit}`, async () => {
     const flags = await schemaFlags();
     const supp = onSupplementalSql(flags);
     return query<RankedProperty>(
@@ -234,7 +214,7 @@ export type ZipDirectory = {
  * carries 20k rows with a literal '0' ZIP plus a scattering of ZIP+4 strings.
  */
 export function getZipDirectory(): Promise<ZipDirectory> {
-  return cached('zip:directory', async () => {
+  return memoize('zip:directory', async () => {
     const flags = await schemaFlags();
     const rows = await query<{
       zip_code: string;
@@ -299,7 +279,7 @@ export async function getZipEntry(zip: string): Promise<ZipEntry | null> {
 }
 
 export function getZipStats(zip: string): Promise<AreaStats | null> {
-  return cached(`zip:stats:${zip}`, async () => {
+  return memoize(`zip:stats:${zip}`, async () => {
     const flags = await schemaFlags();
     const row = await queryOne<AreaRow>(
       areaStatsSql(onSupplementalSql(flags), 'p.zip_code = $1'),
@@ -321,7 +301,7 @@ export function getZipTopProperties(
   boros: readonly number[],
   limit = AREA_PROPERTY_LIMIT,
 ): Promise<RankedProperty[]> {
-  return cached(`zip:props:${zip}:${limit}`, async () => {
+  return memoize(`zip:props:${zip}:${limit}`, async () => {
     const flags = await schemaFlags();
     const supp = onSupplementalSql(flags);
     return query<RankedProperty>(
@@ -342,7 +322,7 @@ export function getZipTopOwners(
   boros: readonly number[],
   limit = AREA_OWNER_LIMIT,
 ): Promise<LocalOwner[]> {
-  return cached(`zip:owners:${zip}:${limit}`, async () => {
+  return memoize(`zip:owners:${zip}:${limit}`, async () => {
     const flags = await schemaFlags();
     return query<LocalOwner>(
       topOwnersSql(
@@ -371,7 +351,7 @@ export type Leaderboards = {
  * 933k-row `owners` table, which measured at 120 ms.
  */
 export function getLeaderboards(): Promise<Leaderboards> {
-  return cached('leaderboards', async () => {
+  return memoize('leaderboards', async () => {
     const flags = await schemaFlags();
     const counts = ownerCountsSql(flags);
     const rollCount = ownerRollCountSql(flags);

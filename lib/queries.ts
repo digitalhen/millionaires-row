@@ -1,6 +1,14 @@
 import { query, queryOne } from './db';
-import { onSupplementalSql, ownerCountsSql, schemaFlags, tierSql } from './schema';
+import { memoize } from './memo';
+import {
+  onSupplementalSql,
+  ownerCountsSql,
+  schemaFlags,
+  tierSql,
+  type SchemaFlags,
+} from './schema';
 import type {
+  BuildingBlock,
   MapPoint,
   MapTier,
   OwnerResponse,
@@ -18,9 +26,21 @@ import type {
  *  full scan of ~1M rows per keystroke is not acceptable. */
 export const MIN_QUERY_LENGTH = 3;
 export const SEARCH_MAX_LIMIT = 100;
+/**
+ * Deepest page anyone may ask for. Postgres has to walk and discard every
+ * skipped row, so an unbounded `offset` is a free way to turn a 40ms query into
+ * a full sort of the match set; the UI never pages past the count cap anyway.
+ */
+export const SEARCH_MAX_OFFSET = 10_000;
 /** Exact counts are capped so a query like "STREET" cannot cost a full scan. */
 export const SEARCH_COUNT_CAP = 10_000;
 export const OWNER_PROPERTY_CAP = 500;
+/**
+ * Units listed under "in this building". The biggest sibling set on the roll is
+ * a 3,858-unit condominium; past a couple of hundred rows the section is a phone
+ * book rather than context, and every row is a link the page has to render.
+ */
+export const BUILDING_UNIT_CAP = 200;
 /**
  * Size of the uniform (non-eligible) part of the citywide overview sample.
  * Plus the ~29k always-included eligible parcels this lands at ~105k points:
@@ -71,7 +91,7 @@ export async function search(
   if (q.length < MIN_QUERY_LENGTH) return { results: [], total: 0, totalCapped: false };
 
   const lim = Math.min(Math.max(1, Math.floor(limit) || 25), SEARCH_MAX_LIMIT);
-  const off = Math.max(0, Math.floor(offset) || 0);
+  const off = Math.min(Math.max(0, Math.floor(offset) || 0), SEARCH_MAX_OFFSET);
   const esc = escapeLike(q);
   const contains = `%${esc}%`;
   const prefix = `${esc}%`;
@@ -83,63 +103,214 @@ export async function search(
   const suppOrder = flags.hasOnSupplemental ? 'p.on_supplemental DESC,' : '';
 
   /**
-   * Rank, in order:
-   *
-   *  1. match quality — exact, then prefix, then anything containing the term;
-   *  2. on the supplemental roll, then not — the roll is what this site is
-   *     about, so at equal match quality a roll parcel outranks a city-only
-   *     one ("PARK AVENUE" used to return a page of NYCHA/DCAS/Parks slivers);
-   *  3. matches DOF's surcharge criteria, then not (`eligible` is a strict
-   *     subset of `on_supplemental`, so this only sorts inside the roll);
-   *  4. DOF value, biggest money first, then parid for a stable page 2.
-   *
-   * The address arms of the quality CASE require the parcel to carry a house
-   * number. ~27,800 rows are street beds and slivers filed under a bare street
-   * name ("PARK AVENUE", "5 AVENUE"), 96% of them city-owned and off the roll;
-   * counting those as an *exact address match* is what put 47 untitled lots
-   * above every building on the avenue. A parcel with no house number is not a
-   * building, so it ranks as a plain containment match. Owner matching is
-   * untouched, which is what keeps `DCAS`, `TRUMP` and `WINTOUR` exact-first.
+   * The page of results and the capped total are independent queries over the
+   * same filter, and they were being awaited one after the other — so every
+   * search paid both round trips end to end. Issued together they overlap, and
+   * a search costs about what its slower half costs. Under saturation this is
+   * a wash (the pool, not the wire, is the constraint), but that is not the
+   * case anyone types into the box from.
    */
-  const rows = await query<SearchResult>(
-    `SELECT p.parid,
-            p.address,
-            p.boro,
-            p.owner,
-            p.owner_norm,
-            p.fmv,
-            p.eligible,
-            ${onSupplementalSql(flags)} AS on_supplemental,
-            COALESCE(o.property_count, 1)::int AS property_count
-       FROM properties p
-       LEFT JOIN owners o ON o.owner_norm = p.owner_norm
-      WHERE ${where}
-      ORDER BY CASE
-                 WHEN p.owner_norm = $2 THEN 0
-                 WHEN p.address = $2 AND COALESCE(p.housenum_lo, '') <> '' THEN 0
-                 WHEN p.address ILIKE $3 ESCAPE '\\'
-                      AND COALESCE(p.housenum_lo, '') <> '' THEN 1
-                 WHEN p.owner_norm ILIKE $3 ESCAPE '\\' THEN 2
-                 ELSE 3
-               END,
-               ${suppOrder}
-               p.fmv DESC NULLS LAST,
-               p.parid
-      LIMIT $4 OFFSET $5`,
-    [contains, q, prefix, lim, off],
-  );
+  const [rows, counted] = await Promise.all([
+    /**
+     * Rank, in order:
+     *
+     *  1. match quality — exact, then prefix, then anything containing the term;
+     *  2. on the supplemental roll, then not — the roll is what this site is
+     *     about, so at equal match quality a roll parcel outranks a city-only
+     *     one ("PARK AVENUE" used to return a page of NYCHA/DCAS/Parks slivers);
+     *  3. matches DOF's surcharge criteria, then not (`eligible` is a strict
+     *     subset of `on_supplemental`, so this only sorts inside the roll);
+     *  4. DOF value, biggest money first, then parid for a stable page 2.
+     *
+     * The address arms of the quality CASE require the parcel to carry a house
+     * number. ~27,800 rows are street beds and slivers filed under a bare street
+     * name ("PARK AVENUE", "5 AVENUE"), 96% of them city-owned and off the roll;
+     * counting those as an *exact address match* is what put 47 untitled lots
+     * above every building on the avenue. A parcel with no house number is not a
+     * building, so it ranks as a plain containment match. Owner matching is
+     * untouched, which is what keeps `DCAS`, `TRUMP` and `WINTOUR` exact-first.
+     */
+    query<SearchResult>(
+      `SELECT p.parid,
+              p.address,
+              p.boro,
+              p.owner,
+              p.owner_norm,
+              p.fmv,
+              p.eligible,
+              ${onSupplementalSql(flags)} AS on_supplemental,
+              COALESCE(o.property_count, 1)::int AS property_count
+         FROM properties p
+         LEFT JOIN owners o ON o.owner_norm = p.owner_norm
+        WHERE ${where}
+        ORDER BY CASE
+                   WHEN p.owner_norm = $2 THEN 0
+                   WHEN p.address = $2 AND COALESCE(p.housenum_lo, '') <> '' THEN 0
+                   WHEN p.address ILIKE $3 ESCAPE '\\'
+                        AND COALESCE(p.housenum_lo, '') <> '' THEN 1
+                   WHEN p.owner_norm ILIKE $3 ESCAPE '\\' THEN 2
+                   ELSE 3
+                 END,
+                 ${suppOrder}
+                 p.fmv DESC NULLS LAST,
+                 p.parid
+        LIMIT $4 OFFSET $5`,
+      [contains, q, prefix, lim, off],
+    ),
+    queryOne<{ n: number }>(
+      `SELECT count(*)::int AS n
+         FROM (SELECT 1 FROM properties p WHERE ${where} LIMIT $2) s`,
+      [contains, SEARCH_COUNT_CAP + 1],
+    ),
+  ]);
 
-  const counted = await queryOne<{ n: number }>(
-    `SELECT count(*)::int AS n
-       FROM (SELECT 1 FROM properties p WHERE ${where} LIMIT $2) s`,
-    [contains, SEARCH_COUNT_CAP + 1],
-  );
   const raw = counted?.n ?? 0;
   return {
     results: rows,
     total: Math.min(raw, SEARCH_COUNT_CAP),
     totalCapped: raw > SEARCH_COUNT_CAP,
   };
+}
+
+/**
+ * "In this building" — the parcels stacked on the same map point as this one.
+ *
+ * Two arms, unioned:
+ *   • same BBL, which gathers a co-op's building record and its `-U####` unit
+ *     rows (they all carry the building's BBL);
+ *   • same (boro, block, condo_number), which gathers a condominium, whose
+ *     units are each their own BBL.
+ * Both are index lookups — `properties_bbl` and `properties_boro_block_condo`
+ * (scripts/building_indexes.sql) — combined by a BitmapOr. The second arm is
+ * only added when the parcel actually carries a condo number, so a standalone
+ * house costs exactly one BBL probe returning one row: itself.
+ *
+ * The building record is found without parsing `parid`, which is opaque: group
+ * the siblings by BBL and take the BBL that holds both a plain row and at least
+ * one `-U` row. That is a single hash aggregate, where the obvious correlated
+ * "does a child exist" test degrades to O(n²) and cost 17ms on a 651-unit
+ * condominium. Ties prefer the viewed parcel's own BBL, so a co-op unit always
+ * resolves to its own building rather than to a neighbour in the same condo.
+ */
+async function getBuilding(
+  property: Property,
+  flags: SchemaFlags,
+): Promise<BuildingBlock | undefined> {
+  const params: unknown[] = [property.bbl];
+  let siblings = 'p.bbl = $1';
+  if (property.condo_number) {
+    params.push(property.boro, property.block, property.condo_number);
+    siblings = '(p.bbl = $1 OR (p.boro = $2 AND p.block = $3 AND p.condo_number = $4))';
+  }
+
+  const summary = await queryOne<{
+    n: number;
+    building_parid: string | null;
+    record_units: number;
+  }>(
+    `WITH sib AS (SELECT p.parid, p.bbl FROM properties p WHERE ${siblings}),
+          bld AS (
+            SELECT g.parid, g.units
+              FROM (SELECT s.bbl,
+                           min(s.parid) FILTER (WHERE position('-U' in s.parid) = 0) AS parid,
+                           count(*) FILTER (WHERE position('-U' in s.parid) > 0) AS units
+                      FROM sib s
+                     GROUP BY s.bbl) g
+             WHERE g.parid IS NOT NULL AND g.units > 0
+             ORDER BY (g.bbl = $1) DESC, g.units DESC, g.parid
+             LIMIT 1
+          )
+     SELECT (SELECT count(*)::int FROM sib) AS n,
+            (SELECT parid FROM bld) AS building_parid,
+            COALESCE((SELECT units FROM bld), 0)::int AS record_units`,
+    params,
+  );
+
+  // Only this parcel sits on the point — the standalone case, and the reason
+  // the block is optional rather than an empty object on every property page.
+  const total = summary?.n ?? 0;
+  if (total < 2) return undefined;
+
+  const buildingParid = summary?.building_parid ?? null;
+  const isBuildingRecord = buildingParid === property.parid;
+  // The building record is listed once, as the section's header line, so it is
+  // kept out of the unit table along with the parcel being viewed.
+  const skip = [property.parid];
+  if (buildingParid && !isBuildingRecord) skip.push(buildingParid);
+  const unitCount = Math.max(0, total - skip.length);
+
+  const cols = `p.parid, p.address, p.boro, p.tax_class, p.bldg_class, p.aptno, p.fmv,
+                p.eligible, ${onSupplementalSql(flags)} AS on_supplemental`;
+
+  const [units, buildingRow] = await Promise.all([
+    unitCount === 0
+      ? Promise.resolve([] as PropertyListItem[])
+      : query<PropertyListItem>(
+          `SELECT ${cols}
+             FROM properties p
+            WHERE ${siblings} AND p.parid <> ALL($${params.length + 1}::text[])
+            ORDER BY p.fmv DESC NULLS LAST, p.parid
+            LIMIT $${params.length + 2}`,
+          [...params, skip, BUILDING_UNIT_CAP],
+        ),
+    buildingParid && !isBuildingRecord
+      ? queryOne<PropertyListItem>(
+          `SELECT ${cols} FROM properties p WHERE p.parid = $1`,
+          [buildingParid],
+        )
+      : Promise.resolve(null),
+  ]);
+
+  return {
+    // Viewing the building record itself: it is already in hand, no round trip.
+    buildingRecord: isBuildingRecord ? toListItem(property) : buildingRow,
+    isBuildingRecord,
+    recordUnitCount: buildingParid ? (summary?.record_units ?? 0) : 0,
+    unitCount,
+    units,
+    truncated: units.length < unitCount,
+  };
+}
+
+function toListItem(p: Property): PropertyListItem {
+  return {
+    parid: p.parid,
+    address: p.address,
+    boro: p.boro,
+    tax_class: p.tax_class,
+    bldg_class: p.bldg_class,
+    aptno: p.aptno,
+    fmv: p.fmv,
+    eligible: p.eligible,
+    on_supplemental: p.on_supplemental,
+  };
+}
+
+/** The owner of record and the rest of their portfolio. */
+async function getOwnerContext(
+  property: Property,
+  flags: SchemaFlags,
+): Promise<{ owner: OwnerSummary | null; otherProperties: PropertyListItem[] }> {
+  if (!property.owner_norm) return { owner: null, otherProperties: [] };
+
+  const owner = await queryOne<OwnerSummary>(
+    `SELECT o.owner_norm, o.display_name, o.property_count, o.total_fmv,
+            ${ownerCountsSql(flags)}
+       FROM owners o WHERE o.owner_norm = $1`,
+    [property.owner_norm],
+  );
+  if (!owner || owner.property_count <= 1) return { owner, otherProperties: [] };
+
+  const otherProperties = await query<PropertyListItem>(
+    `SELECT p.parid, p.address, p.boro, p.tax_class, p.bldg_class, p.fmv,
+            p.eligible, ${onSupplementalSql(flags)} AS on_supplemental
+       FROM properties p
+      WHERE p.owner_norm = $1 AND p.parid <> $2
+      ORDER BY p.fmv DESC NULLS LAST, p.parid
+      LIMIT 50`,
+    [property.owner_norm, property.parid],
+  );
+  return { owner, otherProperties };
 }
 
 export async function getProperty(parid: string): Promise<PropertyResponse | null> {
@@ -151,30 +322,14 @@ export async function getProperty(parid: string): Promise<PropertyResponse | nul
   );
   if (!property) return null;
 
-  let owner: OwnerSummary | null = null;
-  let otherProperties: PropertyListItem[] = [];
+  // Independent of each other, so the round trips overlap: the building lookup
+  // costs a standalone parcel nothing it was not already waiting on.
+  const [{ owner, otherProperties }, building] = await Promise.all([
+    getOwnerContext(property, flags),
+    getBuilding(property, flags),
+  ]);
 
-  if (property.owner_norm) {
-    owner = await queryOne<OwnerSummary>(
-      `SELECT o.owner_norm, o.display_name, o.property_count, o.total_fmv,
-              ${ownerCountsSql(flags)}
-         FROM owners o WHERE o.owner_norm = $1`,
-      [property.owner_norm],
-    );
-    if (owner && owner.property_count > 1) {
-      otherProperties = await query<PropertyListItem>(
-        `SELECT p.parid, p.address, p.boro, p.tax_class, p.bldg_class, p.fmv,
-                p.eligible, ${onSupplementalSql(flags)} AS on_supplemental
-           FROM properties p
-          WHERE p.owner_norm = $1 AND p.parid <> $2
-          ORDER BY p.fmv DESC NULLS LAST, p.parid
-          LIMIT 50`,
-        [property.owner_norm, parid],
-      );
-    }
-  }
-
-  return { property, owner, otherProperties };
+  return { property, owner, otherProperties, building };
 }
 
 export async function getOwner(ownerNorm: string): Promise<OwnerResponse | null> {
@@ -289,25 +444,27 @@ export type HeadlineStats = {
   eligibleCount: number;
 };
 
-export async function getHeadlineStats(): Promise<HeadlineStats | null> {
-  const flags = await schemaFlags();
-  const supp = onSupplementalSql(flags);
-  const row = await queryOne<{
-    roll_count: number;
-    roll_fmv: number | null;
-    eligible_count: number;
-  }>(
-    `SELECT count(*) FILTER (WHERE ${supp})::int AS roll_count,
-            COALESCE(sum(p.fmv) FILTER (WHERE ${supp}), 0) AS roll_fmv,
-            count(*) FILTER (WHERE p.eligible)::int AS eligible_count
-       FROM properties p`,
-  );
-  if (!row || !row.roll_count) return null;
-  return {
-    rollCount: row.roll_count,
-    rollFmv: row.roll_fmv ?? 0,
-    eligibleCount: row.eligible_count,
-  };
+export function getHeadlineStats(): Promise<HeadlineStats | null> {
+  return memoize('headlineStats', async () => {
+    const flags = await schemaFlags();
+    const supp = onSupplementalSql(flags);
+    const row = await queryOne<{
+      roll_count: number;
+      roll_fmv: number | null;
+      eligible_count: number;
+    }>(
+      `SELECT count(*) FILTER (WHERE ${supp})::int AS roll_count,
+              COALESCE(sum(p.fmv) FILTER (WHERE ${supp}), 0) AS roll_fmv,
+              count(*) FILTER (WHERE p.eligible)::int AS eligible_count
+         FROM properties p`,
+    );
+    if (!row || !row.roll_count) return null;
+    return {
+      rollCount: row.roll_count,
+      rollFmv: row.roll_fmv ?? 0,
+      eligibleCount: row.eligible_count,
+    };
+  });
 }
 
 type PointRow = {
@@ -399,7 +556,19 @@ export async function getPointsInBbox(
   return toPoints(rows);
 }
 
-export async function getStats(): Promise<StatsResponse> {
+/**
+ * Site-wide figures for the home page and `/api/stats`.
+ *
+ * Three full aggregate passes over 1.2M rows — ~600ms, and the home page is the
+ * front door, so this used to be re-run for every visitor. The roll is read-only
+ * for the life of the process, so it is computed once instead; under load that
+ * moved the home page from 34 to well over a thousand renders a second.
+ */
+export function getStats(): Promise<StatsResponse> {
+  return memoize('stats', computeStats);
+}
+
+async function computeStats(): Promise<StatsResponse> {
   const flags = await schemaFlags();
   const [props, owners, topOwners] = await Promise.all([
     queryOne<{

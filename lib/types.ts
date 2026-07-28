@@ -69,12 +69,49 @@ export type PropertyListItem = {
   fmv: number | null;
   eligible: boolean;
   on_supplemental: boolean;
+  /** Apartment designation, only selected where a list is unit-level (the
+   *  "in this building" table). Absent from owner-portfolio rows. */
+  aptno?: string | null;
+};
+
+/**
+ * The other parcels stacked on the same map point as this one — the reason a
+ * click on a Manhattan apartment house lands on an arbitrary line of the roll.
+ *
+ * Two kinds of building produce a sibling set:
+ *   • a co-op, where the roll carries one building-level record (the BBL) whose
+ *     FMV is the aggregate, plus a `<bbl>-U0001…` row per apartment;
+ *   • a condominium, where every unit is its own BBL and the only thing tying
+ *     them together is (boro, block, condo_number).
+ * A condominium normally has no building-level record, so `buildingRecord` is
+ * null for one and the section is headed by a plain unit count instead.
+ */
+export type BuildingBlock = {
+  /** The co-op building record — the aggregate row — or null (condos). */
+  buildingRecord: PropertyListItem | null;
+  /** The parcel being viewed IS that aggregate record. */
+  isBuildingRecord: boolean;
+  /**
+   * How many unit rows the aggregate actually covers — the co-op's own `-U`
+   * children, which is not the same as `unitCount`: a co-op inside a
+   * condominium also has commercial units and a billing lot as siblings, and
+   * the building record's FMV does not include them.
+   */
+  recordUnitCount: number;
+  /** Siblings excluding the viewed parcel and the building record. */
+  unitCount: number;
+  /** The first `BUILDING_UNIT_CAP` of them, biggest DOF value first. */
+  units: PropertyListItem[];
+  /** `units` is a capped slice of `unitCount`. */
+  truncated: boolean;
 };
 
 export type PropertyResponse = {
   property: Property;
   owner: OwnerSummary | null;
   otherProperties: PropertyListItem[];
+  /** Omitted entirely for a standalone parcel (nothing shares its point). */
+  building?: BuildingBlock;
 };
 
 export type OwnerResponse = {

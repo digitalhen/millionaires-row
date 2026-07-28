@@ -132,6 +132,7 @@ export default function HomeView({ stats }: { stats: StatsResponse | null }) {
         loading={loading}
         error={error}
         onClose={close}
+        onSelect={select}
       />
     </main>
   );

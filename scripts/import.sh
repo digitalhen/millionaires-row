@@ -182,6 +182,15 @@ WHERE on_supplemental AND (
        AND fmv > 5000000)
    OR (bldg_class LIKE 'R%' AND fmv >= 1000000)
    OR (parid LIKE '%-U%' AND fmv >= 1000000));
+
+-- The criteria apply to condo/co-op UNITS. A co-op building record whose FMV
+-- is the aggregate of its '-U' unit rows must not itself be flagged — the
+-- units carry their own flags (e.g. an R9 parent at $11M whose units are all
+-- under $1M would otherwise show as a false red).
+UPDATE properties p SET eligible = false
+WHERE p.eligible AND p.parid NOT LIKE '%-U%'
+  AND EXISTS (SELECT 1 FROM properties c
+               WHERE c.bbl = p.bbl AND c.parid LIKE p.parid || '-U%');
 SQL
 
 echo "==> dropping staging table"

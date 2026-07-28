@@ -12,8 +12,17 @@ import {
   num,
   taxClassLabel,
 } from '@/lib/format';
+import BuildingUnits from './BuildingUnits';
 import EligibleBadge, { NotOnRollNote } from './EligibleBadge';
 import OwnerCounts from './OwnerCounts';
+
+/**
+ * Units listed in the sheet before it falls back to "full list →". On a phone
+ * the panel is 45dvh, so a 200-row table would bury the close button under a
+ * scroll nobody asked for; twelve rows is enough to show what kind of building
+ * this is, and the property page carries the rest.
+ */
+const PANEL_UNIT_ROWS = 12;
 
 /**
  * Selected-property details. A right-hand side panel on desktop, a bottom sheet
@@ -26,12 +35,15 @@ export default function DetailPanel({
   loading,
   error,
   onClose,
+  onSelect,
 }: {
   parid: string | null;
   data: PropertyResponse | null;
   loading: boolean;
   error: boolean;
   onClose: () => void;
+  /** Swap the panel to another parcel without leaving the map. */
+  onSelect?: (parid: string) => void;
 }) {
   const [dragY, setDragY] = useState(0);
   const startY = useRef<number | null>(null);
@@ -52,6 +64,7 @@ export default function DetailPanel({
 
   const p = data?.property ?? null;
   const owner = data?.owner ?? null;
+  const building = data?.building ?? null;
   const bldg = p ? buildingClassLabel(p.bldg_class) : null;
 
   return (
@@ -103,7 +116,14 @@ export default function DetailPanel({
             )}
 
             <div className="panel-fmv-block">
-              <span className="label">Full market value</span>
+              {/* Named as an aggregate right here, not only in the building
+                  section below: the co-op building record's figure is the whole
+                  house and reads as a single flat otherwise. */}
+              <span className="label">
+                {building?.isBuildingRecord
+                  ? `Full market value — aggregate of ${num(building.recordUnitCount)} units`
+                  : 'Full market value'}
+              </span>
               <div className="panel-fmv">{money(p.fmv)}</div>
               <span className="crumb">DOF estimate · tax year {p.tax_year}</span>
             </div>
@@ -150,6 +170,21 @@ export default function DetailPanel({
             <Link href={`/property/${encodeURIComponent(p.parid)}`} className="badge panel-full">
               Full details →
             </Link>
+
+            {/* Last in the sheet on purpose: on a phone the panel is 45dvh, and
+                the value, the owner and the way out must all be reachable
+                without scrolling past a block of flat numbers. */}
+            {building && (
+              <section className="panel-bldg">
+                <h3>In this building</h3>
+                <BuildingUnits
+                  building={building}
+                  rowCap={PANEL_UNIT_ROWS}
+                  seeAllParid={p.parid}
+                  onNavigate={onSelect}
+                />
+              </section>
+            )}
           </>
         )}
       </div>

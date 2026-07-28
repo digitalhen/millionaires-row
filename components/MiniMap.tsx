@@ -34,8 +34,10 @@ export default function MiniMap({
         container: containerRef.current,
         style: baseStyle(),
         center: [longitude, latitude],
-        zoom: 14.5,
-        minZoom: 10,
+        // Wide enough that the borough outline lands in frame — a closer zoom
+        // renders a lone dot on featureless black.
+        zoom: 11.8,
+        minZoom: 9,
         maxZoom: 18,
         attributionControl: false,
         dragRotate: false,

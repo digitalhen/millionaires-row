@@ -15,6 +15,15 @@ services:
       seed:
         condition: service_completed_successfully
     restart: unless-stopped
+    # /api/health answers 200 whenever the process can serve, reporting the
+    # database separately in its body — restarting the app would not fix a
+    # Postgres outage, so it must not be what turns the container unhealthy.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     # Dokploy attaches its Traefik to this port.
     expose:
       - "3000"

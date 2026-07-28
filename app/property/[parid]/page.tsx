@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import AboutNote from '@/components/AboutNote';
+import BuildingUnits from '@/components/BuildingUnits';
 import EligibleBadge, { NotOnRollNote } from '@/components/EligibleBadge';
 import JsonLd from '@/components/JsonLd';
 import MiniMap from '@/components/MiniMap';
@@ -99,7 +100,7 @@ export default async function PropertyPage({ params }: Params) {
   const data = await getProperty(decodeParam(parid).trim());
   if (!data) notFound();
 
-  const { property: p, owner, otherProperties } = data;
+  const { property: p, owner, otherProperties, building } = data;
   const label = addressLabel(p.address, p);
   const bldgLabel = buildingClassLabel(p.bldg_class);
   const hasCoords = p.longitude != null && p.latitude != null;
@@ -222,13 +223,27 @@ export default async function PropertyPage({ params }: Params) {
 
       <div className="fmv-block">
         <div>
-          <span className="label">Full market value</span>
+          {/* A co-op's building record files one figure for the whole house.
+              Left as a bare "full market value" it reads as an $11m apartment,
+              so the aggregate is named in the headline, not further down. */}
+          <span className="label">
+            {building?.isBuildingRecord
+              ? `Full market value — aggregate of ${num(building.recordUnitCount)} units`
+              : 'Full market value'}
+          </span>
           <div className="fmv">{money(p.fmv)}</div>
         </div>
         <span className="crumb">
           DOF estimate · tax year {p.tax_year} · roll {p.source_file}
         </span>
       </div>
+
+      {building && (
+        <section className="section">
+          <h2>In this building</h2>
+          <BuildingUnits building={building} />
+        </section>
+      )}
 
       <section className="section">
         <h2>Classification</h2>
