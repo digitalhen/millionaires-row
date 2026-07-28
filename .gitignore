@@ -2,7 +2,8 @@ node_modules/
 .next/
 data/raw/
 data/pluto/
-data/seed/*.dump
+# data/seed/mrow.dump IS committed (60MB, under GitHub's 100MB limit) —
+# git-based Dokploy deploys need it to seed each instance's Postgres.
 data/seed/*.sql.gz
 .env
 .env.local

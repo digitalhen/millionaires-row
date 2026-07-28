@@ -1,0 +1,60 @@
+# Production stack for Dokploy (one per instance).
+# The app + its own Postgres, seeded from data/seed/mrow.dump on first boot.
+services:
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://millionairesrownyc.com}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
+    environment:
+      DATABASE_URL: postgres://mrow:${POSTGRES_PASSWORD:-mrow}@postgres:5432/mrow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # Dokploy attaches its Traefik to this port.
+    expose:
+      - "3000"
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: mrow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mrow}
+      POSTGRES_DB: mrow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mrow -d mrow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # One-shot: restores the seed dump if the database is empty, then exits.
+  seed:
+    image: postgres:16
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-mrow}
+    volumes:
+      - ./data/seed:/seed:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        if psql -h postgres -U mrow -d mrow -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='properties'" | grep -q 1; then
+          echo "seed: database already initialized, skipping"
+        else
+          echo "seed: restoring /seed/mrow.dump"
+          pg_restore -h postgres -U mrow -d mrow --no-owner --no-acl /seed/mrow.dump
+          echo "seed: done"
+        fi
+
+volumes:
+  pgdata:
