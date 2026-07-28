@@ -18,7 +18,7 @@ import {
 } from '@/lib/mapStyle';
 import { withBase, withBaseVersioned } from '@/lib/basePath';
 import { money } from '@/lib/format';
-import { loadMapLibre } from '@/lib/maplibre';
+import { hasWebGL2, loadMapLibre } from '@/lib/maplibre';
 import AboutNote from './AboutNote';
 
 /** Above this zoom we fetch the exact parcels in view instead of the overview. */
@@ -28,6 +28,15 @@ const MOVE_DEBOUNCE_MS = 300;
 const BBOX_LIMIT = 40_000;
 /** Zoom the camera settles on when a parcel is selected. */
 const SELECT_ZOOM = 14.3;
+/**
+ * Share of the canvas the mobile bottom sheet covers — `.panel { max-height }`
+ * inside the max-width:760px block of globals.css. The visible strip is the
+ * rest, so its centre sits half a sheet above the canvas centre and that is
+ * exactly the flyTo offset. Keep this in step with the stylesheet.
+ */
+const MOBILE_SHEET_FRACTION = 0.45;
+/** Shown in place of the status line when the GPU cannot give us a context. */
+const NO_WEBGL = 'Map unavailable — WebGL required. Search still works.';
 
 type Tooltip = {
   x: number;
@@ -61,6 +70,8 @@ export default function MapExplorer({
   const [status, setStatus] = useState('Loading parcels…');
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
   const [ready, setReady] = useState(false);
+  /** MapLibre could not start — no WebGL, or the module failed to load. */
+  const [failed, setFailed] = useState(false);
   // The grey background tier only exists once the full city roll is loaded.
   const [hasCityTier, setHasCityTier] = useState(false);
 
@@ -132,26 +143,59 @@ export default function MapExplorer({
     let disposed = false;
     let map: MapLibreMap | null = null;
 
+    /**
+     * No WebGL, or the module never arrived: say so instead of spinning.
+     * A browser without WebGL2 is a supported (if reduced) state rather than a
+     * fault, so only the unexpected failures are logged as errors.
+     */
+    const giveUp = (err: unknown, expected = false) => {
+      if (expected) console.warn('[map]', err);
+      else console.error('[map] initialisation failed', err);
+      if (disposed) return;
+      setFailed(true);
+      setStatus(NO_WEBGL);
+    };
+
     (async () => {
-      const maplibre = await loadMapLibre();
+      // No WebGL2 means no map, and MapLibre's own failure is silent (see
+      // `hasWebGL2`) — the status line used to read "Loading parcels…" for ever.
+      if (!hasWebGL2()) {
+        giveUp('WebGL2 is unavailable in this browser — map disabled', true);
+        return;
+      }
+
+      // The dynamic import can still fail on a flaky network, and a future
+      // MapLibre may go back to throwing out of the constructor.
+      let maplibre: Awaited<ReturnType<typeof loadMapLibre>>;
+      try {
+        maplibre = await loadMapLibre();
+      } catch (err) {
+        giveUp(err);
+        return;
+      }
       if (disposed || !containerRef.current) return;
 
-      map = new maplibre.Map({
-        container: containerRef.current,
-        style: baseStyle(),
-        // Frame the whole city regardless of viewport shape — a fixed zoom
-        // crops badly on a phone.
-        bounds: NYC_BOUNDS,
-        fitBoundsOptions: { padding: 8, duration: 0 },
-        center: NYC_CENTER,
-        minZoom: 8,
-        maxZoom: 19,
-        maxBounds: NYC_BOUNDS,
-        attributionControl: false,
-        dragRotate: false,
-        pitchWithRotate: false,
-        renderWorldCopies: false,
-      });
+      try {
+        map = new maplibre.Map({
+          container: containerRef.current,
+          style: baseStyle(),
+          // Frame the whole city regardless of viewport shape — a fixed zoom
+          // crops badly on a phone.
+          bounds: NYC_BOUNDS,
+          fitBoundsOptions: { padding: 8, duration: 0 },
+          center: NYC_CENTER,
+          minZoom: 8,
+          maxZoom: 19,
+          maxBounds: NYC_BOUNDS,
+          attributionControl: false,
+          dragRotate: false,
+          pitchWithRotate: false,
+          renderWorldCopies: false,
+        });
+      } catch (err) {
+        giveUp(err);
+        return;
+      }
       mapRef.current = map;
       map.touchZoomRotate?.disableRotation();
       map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
@@ -257,8 +301,12 @@ export default function MapExplorer({
 
     const canvas = map.getCanvas();
     const isSheet = window.matchMedia('(max-width: 760px)').matches;
+    // Under the sheet the visible strip is the top (1 − f) of the canvas, so
+    // its centre is f/2 of the canvas height above the canvas centre. On a
+    // 390×844 phone that is 190px up, landing the parcel at y≈232 in the
+    // 0–464px strip the sheet leaves showing.
     const offset: [number, number] = isSheet
-      ? [0, -Math.round(canvas.clientHeight * 0.24)]
+      ? [0, -Math.round((canvas.clientHeight * MOBILE_SHEET_FRACTION) / 2)]
       : [-Math.round(Math.min(canvas.clientWidth * 0.22, 210)), 0];
 
     map.flyTo({
@@ -274,7 +322,10 @@ export default function MapExplorer({
 
   return (
     <>
-      <div ref={containerRef} className="map-canvas" aria-label="Map of New York City properties" />
+      <div ref={containerRef} className="map-canvas" aria-label="Map of New York City properties">
+        {/* Only ever rendered when MapLibre never took the container over. */}
+        {failed && <p className="map-status map-unavailable">{NO_WEBGL}</p>}
+      </div>
       {tooltip && (
         <div
           className={`map-tooltip${tooltip.flip ? ' flip' : ''}`}
@@ -286,15 +337,17 @@ export default function MapExplorer({
       )}
       <div className="map-foot">
         <div>
-          <p className="map-legend">
-            {hasCityTier && (
-              <>
-                <span className="key key-city">■</span> NYC property
-              </>
-            )}
-            <span className="key key-roll">■</span> supplemental roll
-            <span className="key key-eligible">■</span> may be subject
-          </p>
+          {!failed && (
+            <p className="map-legend">
+              {hasCityTier && (
+                <>
+                  <span className="key key-city">■</span> NYC property
+                </>
+              )}
+              <span className="key key-roll">■</span> supplemental roll
+              <span className="key key-eligible">■</span> may be subject
+            </p>
+          )}
           <p className="map-status">{status}</p>
         </div>
         <AboutNote compact />

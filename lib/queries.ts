@@ -77,9 +77,30 @@ export async function search(
   const prefix = `${esc}%`;
   const where = SEARCH_FILTER[mode];
   const flags = await schemaFlags();
+  // Postgres rejects a bare constant in ORDER BY, so on the pre-city-roll
+  // schema — where "on the supplemental roll" degrades to the literal `true` —
+  // the term is dropped instead: every parcel is on the roll there anyway.
+  const suppOrder = flags.hasOnSupplemental ? 'p.on_supplemental DESC,' : '';
 
-  // Rank: exact match first, then prefix match, then anything containing the
-  // term. Ties broken by value (biggest money first) then parid for stability.
+  /**
+   * Rank, in order:
+   *
+   *  1. match quality — exact, then prefix, then anything containing the term;
+   *  2. on the supplemental roll, then not — the roll is what this site is
+   *     about, so at equal match quality a roll parcel outranks a city-only
+   *     one ("PARK AVENUE" used to return a page of NYCHA/DCAS/Parks slivers);
+   *  3. matches DOF's surcharge criteria, then not (`eligible` is a strict
+   *     subset of `on_supplemental`, so this only sorts inside the roll);
+   *  4. DOF value, biggest money first, then parid for a stable page 2.
+   *
+   * The address arms of the quality CASE require the parcel to carry a house
+   * number. ~27,800 rows are street beds and slivers filed under a bare street
+   * name ("PARK AVENUE", "5 AVENUE"), 96% of them city-owned and off the roll;
+   * counting those as an *exact address match* is what put 47 untitled lots
+   * above every building on the avenue. A parcel with no house number is not a
+   * building, so it ranks as a plain containment match. Owner matching is
+   * untouched, which is what keeps `DCAS`, `TRUMP` and `WINTOUR` exact-first.
+   */
   const rows = await query<SearchResult>(
     `SELECT p.parid,
             p.address,
@@ -94,11 +115,14 @@ export async function search(
        LEFT JOIN owners o ON o.owner_norm = p.owner_norm
       WHERE ${where}
       ORDER BY CASE
-                 WHEN p.owner_norm = $2 OR p.address = $2 THEN 0
-                 WHEN p.address ILIKE $3 ESCAPE '\\' THEN 1
+                 WHEN p.owner_norm = $2 THEN 0
+                 WHEN p.address = $2 AND COALESCE(p.housenum_lo, '') <> '' THEN 0
+                 WHEN p.address ILIKE $3 ESCAPE '\\'
+                      AND COALESCE(p.housenum_lo, '') <> '' THEN 1
                  WHEN p.owner_norm ILIKE $3 ESCAPE '\\' THEN 2
                  ELSE 3
                END,
+               ${suppOrder}
                p.fmv DESC NULLS LAST,
                p.parid
       LIMIT $4 OFFSET $5`,

@@ -218,6 +218,52 @@ export function DomainMark(): ReactElement {
   );
 }
 
+/**
+ * A label + figure pair. `accent` paints the figure red and is reserved, as
+ * everywhere else, for the "may be subject to surcharge" count.
+ */
+export function OgStat({
+  label,
+  value,
+  accent = false,
+  size = 46,
+  gap = 54,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  size?: number;
+  /** Space to the next stat. Tighten it when a row carries four figures. */
+  gap?: number;
+}): ReactElement {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', marginRight: gap }}>
+      <Label>{label}</Label>
+      <div
+        style={{
+          fontSize: size,
+          lineHeight: 1.1,
+          marginTop: 6,
+          color: accent ? OG.red : OG.fg,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/** A row of `OgStat`s. Satori needs the explicit flex container. */
+export function OgStatRow({
+  children,
+  marginTop = 0,
+}: {
+  children: ReactNode;
+  marginTop?: number;
+}): ReactElement {
+  return <div style={{ display: 'flex', marginTop }}>{children}</div>;
+}
+
 /** Bottom-left money block + bottom-right domain wordmark. */
 export function OgFooter({
   label,
