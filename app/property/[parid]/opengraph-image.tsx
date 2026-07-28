@@ -12,7 +12,7 @@ import {
   ogMoney,
   ogNum,
 } from '@/lib/og';
-import { boroName, formatBbl } from '@/lib/format';
+import { addressLabel, boroName, formatBbl } from '@/lib/format';
 import { getPropertyCard } from '@/lib/queries';
 import { OG_SIZE, decodeParam } from '@/lib/seo';
 
@@ -55,7 +55,7 @@ export default async function Image({
     );
   }
 
-  const address = clip(p.address.toUpperCase(), 64);
+  const address = clip(addressLabel(p.address, p).toUpperCase(), 64);
   const ownerName = p.owner_norm
     ? clip((p.owner_display || p.owner || p.owner_norm).toUpperCase(), 68)
     : 'NO OWNER ON FILE';

@@ -50,7 +50,9 @@ function escapeLike(s: string): string {
 }
 
 export function normalizeQuery(raw: string): string {
-  return raw.trim().replace(/\s+/g, ' ').toUpperCase();
+  // NUL is rejected by Postgres as a text parameter, which turned `?q=PARK%00`
+  // into a 500; strip before anything else so it degrades to a normal search.
+  return raw.replace(/\0/g, '').trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
 const SEARCH_FILTER: Record<SearchMode, string> = {

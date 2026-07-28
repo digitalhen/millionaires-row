@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { PropertyResponse } from '@/lib/types';
-import { boroName, buildingClassLabel, formatBbl, money, num, taxClassLabel } from '@/lib/format';
+import {
+  addressLabel,
+  boroName,
+  buildingClassLabel,
+  formatBbl,
+  money,
+  num,
+  taxClassLabel,
+} from '@/lib/format';
 import EligibleBadge, { NotOnRollNote } from './EligibleBadge';
 import OwnerCounts from './OwnerCounts';
 
@@ -81,7 +89,7 @@ export default function DetailPanel({
         ) : (
           <>
             <span className="label">Parcel</span>
-            <h2 className="panel-addr">{p.address}</h2>
+            <h2 className="panel-addr">{addressLabel(p.address, p)}</h2>
             <p className="panel-sub">
               {boroName(p.boro)}
               {p.zip_code ? ` · ${p.zip_code}` : ''} · BBL{' '}

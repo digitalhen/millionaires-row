@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { SearchMode, SearchResponse, SearchResult } from '@/lib/types';
 import { withBase } from '@/lib/basePath';
-import { boroName, money } from '@/lib/format';
+import { addressLabel, boroName, money } from '@/lib/format';
 import { EligibleMark, NotOnRollNote } from './EligibleBadge';
 
 const MODES: { key: SearchMode; label: string }[] = [
@@ -191,7 +191,7 @@ export default function SearchBox({
                   <div className="result-top">
                     <span className="result-addr">
                       {r.eligible && <EligibleMark />}
-                      {r.address}
+                      {addressLabel(r.address)}
                     </span>
                     <span className="result-fmv">{money(r.fmv)}</span>
                   </div>

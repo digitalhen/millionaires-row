@@ -19,6 +19,7 @@ import {
   zipPath,
 } from '@/lib/seo';
 import {
+  addressLabel,
   boroName,
   boroSlug,
   buildingClassLabel,
@@ -41,10 +42,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     return { title: 'Record not found', robots: { index: false, follow: true } };
   }
 
-  const title = p.fmv != null ? `${p.address} — ${money(p.fmv)}` : p.address;
+  const label = addressLabel(p.address, p);
+  const title = p.fmv != null ? `${label} — ${money(p.fmv)}` : label;
   const bldg = buildingClassLabel(p.bldg_class);
   const description = [
-    `${p.address}, ${boroName(p.boro)}.`,
+    `${label}, ${boroName(p.boro)}.`,
     `Owner of record: ${p.owner_norm ? p.owner_display || p.owner : 'none on file'}.`,
     `DOF full market value ${money(p.fmv)}.`,
     `Tax class ${p.tax_class}${
@@ -98,6 +100,7 @@ export default async function PropertyPage({ params }: Params) {
   if (!data) notFound();
 
   const { property: p, owner, otherProperties } = data;
+  const label = addressLabel(p.address, p);
   const bldgLabel = buildingClassLabel(p.bldg_class);
   const hasCoords = p.longitude != null && p.latitude != null;
   const houseRange =
@@ -117,11 +120,11 @@ export default async function PropertyPage({ params }: Params) {
     '@type': 'Place',
     '@id': url,
     url,
-    name: p.address,
-    description: `${p.address}, ${boroName(p.boro)} — New York City Department of Finance 2027 supplemental property roll record.`,
+    name: label,
+    description: `${label}, ${boroName(p.boro)} — New York City Department of Finance 2027 supplemental property roll record.`,
     address: {
       '@type': 'PostalAddress',
-      streetAddress: p.address,
+      streetAddress: label,
       addressLocality: boroName(p.boro),
       addressRegion: 'NY',
       postalCode: p.zip_code || undefined,
@@ -184,7 +187,7 @@ export default async function PropertyPage({ params }: Params) {
       <TopBar crumb="Property" />
 
       <div className="detail-head">
-        <h1>{p.address}</h1>
+        <h1>{label}</h1>
         {/* Borough and ZIP double as links up to their aggregate pages. The
             ZIP only links when it is a real NYC ZIP — the roll also carries
             placeholders like '0' and the odd ZIP+4 string, which have no page. */}

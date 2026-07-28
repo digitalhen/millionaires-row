@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { RankedProperty } from '@/lib/aggregates';
-import { boroName, money, num } from '@/lib/format';
+import { addressLabel, boroName, money, num } from '@/lib/format';
 import { ownerPath, propertyPath } from '@/lib/seo';
 import { EligibleMark, NotOnRollMark } from './EligibleBadge';
 
@@ -40,7 +40,7 @@ export default function RankedPropertyTable({
               <td className="rank">{num(i + 1)}</td>
               <td>
                 {r.eligible ? <EligibleMark /> : !r.on_supplemental ? <NotOnRollMark /> : null}
-                <Link href={propertyPath(r.parid)}>{r.address}</Link>
+                <Link href={propertyPath(r.parid)}>{addressLabel(r.address)}</Link>
               </td>
               {showBorough && <td className="nowrap">{boroName(r.boro)}</td>}
               <td>

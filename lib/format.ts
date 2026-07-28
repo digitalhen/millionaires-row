@@ -100,6 +100,26 @@ export function formatBbl(
   return `${boro}-${String(block).padStart(5, '0')}-${String(lot).padStart(4, '0')}`;
 }
 
+/**
+ * Display label for a parcel.
+ *
+ * `address` is NOT NULL on the roll, but 46 parcels carry an *empty* one —
+ * the source row has neither a house number nor a street name. Rendered raw
+ * that produced an empty `<h1>`, a `<title>` opening with a stray em dash and
+ * an empty JSON-LD `name`. Every parcel has a BBL, so that is the fallback
+ * wherever the component columns are to hand; list rows, which only carry the
+ * opaque `parid`, get a plain placeholder instead (`parid` must never be
+ * parsed back into a BBL — see `formatBbl`).
+ */
+export function addressLabel(
+  address: string | null | undefined,
+  bbl?: { boro: number; block: number; lot: number },
+): string {
+  const trimmed = (address ?? '').trim();
+  if (trimmed) return trimmed;
+  return bbl ? `BBL ${formatBbl(bbl.boro, bbl.block, bbl.lot)}` : 'No address on roll';
+}
+
 export function taxClassLabel(taxClass: string): string {
   switch (taxClass) {
     case '1':

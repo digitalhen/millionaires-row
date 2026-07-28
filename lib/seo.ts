@@ -66,11 +66,17 @@ export const OG_SIZE = { width: 1200, height: 630 } as const;
  * the raw segment is right in exactly that case.
  */
 export function decodeParam(raw: string): string {
+  let decoded: string;
   try {
-    return decodeURIComponent(raw);
+    decoded = decodeURIComponent(raw);
   } catch {
-    return raw;
+    decoded = raw;
   }
+  // Postgres refuses a NUL inside a text parameter ("invalid byte sequence for
+  // encoding UTF8: 0x00"), so `/property/123%00` used to throw out of the
+  // driver and surface as a 500 rather than a 404. No identifier on the roll
+  // contains one, so dropping them lets the lookup miss and 404 normally.
+  return decoded.replace(/\0/g, '');
 }
 
 /** Serialised for a <script type="application/ld+json"> tag. */

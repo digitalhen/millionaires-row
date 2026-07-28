@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { PropertyListItem } from '@/lib/types';
-import { boroName, buildingClassLabel, money } from '@/lib/format';
+import { addressLabel, boroName, buildingClassLabel, money } from '@/lib/format';
 import { EligibleMark, NotOnRollMark } from './EligibleBadge';
 
 export default function PropertyTable({ rows }: { rows: PropertyListItem[] }) {
@@ -21,7 +21,9 @@ export default function PropertyTable({ rows }: { rows: PropertyListItem[] }) {
             <tr key={r.parid}>
               <td>
                 {r.eligible ? <EligibleMark /> : !r.on_supplemental ? <NotOnRollMark /> : null}
-                <Link href={`/property/${encodeURIComponent(r.parid)}`}>{r.address}</Link>
+                <Link href={`/property/${encodeURIComponent(r.parid)}`}>
+                  {addressLabel(r.address)}
+                </Link>
               </td>
               <td className="nowrap">{boroName(r.boro)}</td>
               <td>
