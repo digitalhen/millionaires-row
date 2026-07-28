@@ -3,7 +3,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { SearchMode, SearchResponse, SearchResult } from '@/lib/types';
+import { withBase } from '@/lib/basePath';
 import { boroName, money } from '@/lib/format';
+import { EligibleMark, NotOnRollNote } from './EligibleBadge';
 
 const MODES: { key: SearchMode; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -15,7 +17,15 @@ const MIN_CHARS = 3;
 const DEBOUNCE_MS = 200;
 const LIMIT = 10;
 
-export default function SearchBox({ autoFocus = false }: { autoFocus?: boolean }) {
+export default function SearchBox({
+  autoFocus = false,
+  onSelect,
+}: {
+  autoFocus?: boolean;
+  /** When supplied, choosing a result hands it to the caller (the home page
+   *  opens the details panel) instead of navigating to the property page. */
+  onSelect?: (result: SearchResult) => void;
+}) {
   const router = useRouter();
   const listId = useId();
   const [q, setQ] = useState('');
@@ -37,7 +47,7 @@ export default function SearchBox({ autoFocus = false }: { autoFocus?: boolean }
     setBusy(true);
     const t = setTimeout(() => {
       fetch(
-        `/api/search?q=${encodeURIComponent(term)}&mode=${mode}&limit=${LIMIT}`,
+        withBase(`/api/search?q=${encodeURIComponent(term)}&mode=${mode}&limit=${LIMIT}`),
         { signal: ac.signal },
       )
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
@@ -69,6 +79,10 @@ export default function SearchBox({ autoFocus = false }: { autoFocus?: boolean }
 
   function go(r: SearchResult) {
     setOpen(false);
+    if (onSelect) {
+      onSelect(r);
+      return;
+    }
     router.push(`/property/${encodeURIComponent(r.parid)}`);
   }
 
@@ -149,7 +163,7 @@ export default function SearchBox({ autoFocus = false }: { autoFocus?: boolean }
               {results.map((r, i) => (
                 <a
                   key={r.parid}
-                  href={`/property/${encodeURIComponent(r.parid)}`}
+                  href={withBase(`/property/${encodeURIComponent(r.parid)}`)}
                   role="option"
                   aria-selected={i === active}
                   className={`result${i === active ? ' active' : ''}`}
@@ -160,7 +174,10 @@ export default function SearchBox({ autoFocus = false }: { autoFocus?: boolean }
                   onMouseEnter={() => setActive(i)}
                 >
                   <div className="result-top">
-                    <span className="result-addr">{r.address}</span>
+                    <span className="result-addr">
+                      {r.eligible && <EligibleMark />}
+                      {r.address}
+                    </span>
                     <span className="result-fmv">{money(r.fmv)}</span>
                   </div>
                   <div className="result-sub">
@@ -169,6 +186,7 @@ export default function SearchBox({ autoFocus = false }: { autoFocus?: boolean }
                     {r.property_count > 1 && (
                       <span className="badge">▣ {r.property_count} properties</span>
                     )}
+                    {!r.on_supplemental && <NotOnRollNote inline />}
                   </div>
                 </a>
               ))}

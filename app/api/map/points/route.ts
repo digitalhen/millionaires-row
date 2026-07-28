@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPointsInBbox } from '@/lib/queries';
+import { jsonResponse } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
 
   try {
     const points = await getPointsInBbox(minLng, minLat, maxLng, maxLat, limit);
-    return NextResponse.json(points, {
+    return jsonResponse(req, points, {
       headers: { 'Cache-Control': 'public, max-age=120' },
     });
   } catch (err) {

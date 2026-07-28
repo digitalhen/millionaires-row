@@ -22,6 +22,10 @@ export type Property = {
   latitude: number | null;
   longitude: number | null;
   source_file: string;
+  /** matches DOF's surcharge criteria — see the eligibility note in queries.ts */
+  eligible: boolean;
+  /** on the 2027 supplemental roll (vs. the full city assessment roll) */
+  on_supplemental: boolean;
 };
 
 export type OwnerSummary = {
@@ -39,6 +43,8 @@ export type SearchResult = {
   owner_norm: string | null;
   fmv: number | null;
   property_count: number;
+  eligible: boolean;
+  on_supplemental: boolean;
 };
 
 export type SearchResponse = {
@@ -55,6 +61,8 @@ export type PropertyListItem = {
   tax_class: string;
   bldg_class: string | null;
   fmv: number | null;
+  eligible: boolean;
+  on_supplemental: boolean;
 };
 
 export type PropertyResponse = {
@@ -69,8 +77,13 @@ export type OwnerResponse = {
   truncated: boolean;
 };
 
-/** [lng, lat, fmv, parid] */
-export type MapPoint = [number, number, number | null, string];
+/**
+ * [lng, lat, fmv, parid, tier]
+ * tier 0 = any NYC property, 1 = on the supplemental roll, 2 = may be subject
+ * to the surcharge.
+ */
+export type MapTier = 0 | 1 | 2;
+export type MapPoint = [number, number, number | null, string, MapTier];
 
 export type StatsResponse = {
   properties: number;
@@ -78,6 +91,12 @@ export type StatsResponse = {
   owners: number;
   multiOwners: number;
   totalFmv: number;
+  /** parcels on the 2027 supplemental roll (equals `properties` until the
+   *  full city roll is loaded) */
+  supplementalCount: number;
+  /** parcels matching DOF's surcharge criteria */
+  eligibleCount: number;
+  eligibleFmv: number;
   topOwners: OwnerSummary[];
 };
 

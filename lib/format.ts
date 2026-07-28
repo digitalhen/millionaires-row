@@ -1,3 +1,11 @@
+import type { MapTier } from './types';
+
+/** 0 = any NYC parcel, 1 = on the supplemental roll, 2 = may be subject. */
+export function tierOf(p: { eligible: boolean; on_supplemental: boolean }): MapTier {
+  if (p.eligible) return 2;
+  return p.on_supplemental ? 1 : 0;
+}
+
 export const BOROUGHS: Record<number, string> = {
   1: 'Manhattan',
   2: 'The Bronx',
@@ -39,12 +47,19 @@ export function num(v: number | null | undefined): string {
   return int.format(v);
 }
 
-/** PARID is the 10-digit BBL: 1 boro + 5 block + 4 lot. */
-export function formatBbl(parid: string): string {
-  if (/^\d{10}$/.test(parid)) {
-    return `${parid.slice(0, 1)}-${parid.slice(1, 6)}-${parid.slice(6)}`;
-  }
-  return parid;
+/**
+ * Human-readable BBL, built from the component columns.
+ *
+ * `parid` is an OPAQUE identifier and must never be parsed: co-op unit rows
+ * that share a BBL with their building record carry a deterministic suffix
+ * (e.g. `1000110014-U0001`), so it is neither numeric nor fixed-length.
+ */
+export function formatBbl(
+  boro: number,
+  block: number,
+  lot: number,
+): string {
+  return `${boro}-${String(block).padStart(5, '0')}-${String(lot).padStart(4, '0')}`;
 }
 
 export function taxClassLabel(taxClass: string): string {

@@ -2,8 +2,9 @@
 
 import { useEffect, useRef } from 'react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { baseStyle, pointsToGeoJSON, propertyLayer, squareIcon } from '@/lib/mapStyle';
+import { baseStyle, pointsToGeoJSON, singleParcelLayer } from '@/lib/mapStyle';
 import { loadMapLibre } from '@/lib/maplibre';
+import type { MapTier } from '@/lib/types';
 
 /** Small non-interactive locator map used on the property page. */
 export default function MiniMap({
@@ -11,11 +12,13 @@ export default function MiniMap({
   latitude,
   fmv,
   parid,
+  tier,
 }: {
   longitude: number;
   latitude: number;
   fmv: number | null;
   parid: string;
+  tier: MapTier;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -44,12 +47,11 @@ export default function MiniMap({
 
       map.on('load', () => {
         if (!map) return;
-        if (!map.hasImage('sq')) map.addImage('sq', squareIcon());
         map.addSource('props', {
           type: 'geojson',
-          data: pointsToGeoJSON([[longitude, latitude, fmv, parid]]),
+          data: pointsToGeoJSON([[longitude, latitude, fmv, parid, tier]]),
         });
-        map.addLayer(propertyLayer('props', 'props'));
+        map.addLayer(singleParcelLayer('props', 'props'));
         map.addLayer({
           id: 'crosshair',
           type: 'circle',
@@ -68,7 +70,7 @@ export default function MiniMap({
       disposed = true;
       map?.remove();
     };
-  }, [longitude, latitude, fmv, parid]);
+  }, [longitude, latitude, fmv, parid, tier]);
 
   return <div ref={containerRef} className="map-canvas" aria-label="Property location" />;
 }

@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # Millionaires' Row — step 1: (re)create the `mrow` database and import the raw
-# 2027 supplemental tax roll CSVs.
+# 2027 supplemental tax roll CSVs (tier 2 / tier 3 of the site).
+#
+# PIPELINE ORDER (each step is idempotent; run them in this sequence):
+#   1. scripts/import.sh         supplemental roll  -> properties (on_supplemental=true)
+#   2. scripts/import_avroll.sh  full FY27 roll     -> properties (on_supplemental=false)
+#   3. scripts/geocode.sh        PLUTO -> latitude/longitude for every row
+#   4. scripts/build_owners.sh   derive owners, indexes, ANALYZE
+#   5. scripts/dump_seed.sh      pg_dump -Fc -> data/seed/mrow.dump
 #
 # Idempotent: drops and recreates the database from scratch every run.
-# NOTE: this destroys pluto_coords and any geocoding, so re-run scripts/geocode.sh
-# afterwards (the PLUTO download itself is cached under data/pluto/).
+# NOTE: this destroys pluto_coords, the avroll rows and any geocoding, so the
+# later steps must be re-run after it (the PLUTO download and the extracted
+# avroll text file are both cached on disk, so re-runs are cheap).
 #
 # Usage: scripts/import.sh
 set -euo pipefail
@@ -95,7 +103,7 @@ INSERT INTO properties (
   parid, bbl, boro, block, lot, tax_year, tax_class, bldg_class,
   owner, owner_norm, housenum_lo, housenum_hi, street_name, aptno,
   zip_code, city_name, coop_num, condo_number, fmv, address,
-  latitude, longitude, source_file)
+  latitude, longitude, source_file, on_supplemental)
 SELECT
   CASE WHEN rectype = '1' THEN parid
        ELSE parid || '-U' || lpad(
@@ -144,7 +152,8 @@ SELECT
     ), '\s+', ' ', 'g'))                                    AS address,
   NULL::double precision,
   NULL::double precision,
-  source_file
+  source_file,
+  true                                                      AS on_supplemental
 FROM staging_roll s
 CROSS JOIN LATERAL (
   SELECT regexp_replace(
@@ -164,11 +173,12 @@ echo "==> properties rows: $LOADED"
 echo "==> flagging eligible properties"
 "${PSQL[@]}" -d "$DB" <<'SQL'
 UPDATE properties SET eligible = true
-WHERE (tax_class LIKE '1%'
+WHERE on_supplemental AND (
+      (tax_class LIKE '1%'
        AND (bldg_class LIKE 'A%' OR bldg_class LIKE 'B%' OR bldg_class = 'C0')
        AND fmv > 5000000)
    OR (bldg_class LIKE 'R%' AND fmv >= 1000000)
-   OR (parid LIKE '%-U%' AND fmv >= 1000000);
+   OR (parid LIKE '%-U%' AND fmv >= 1000000));
 SQL
 
 echo "==> dropping staging table"

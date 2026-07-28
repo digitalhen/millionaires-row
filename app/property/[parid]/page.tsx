@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import AboutNote from '@/components/AboutNote';
+import EligibleBadge, { NotOnRollNote } from '@/components/EligibleBadge';
 import MiniMap from '@/components/MiniMap';
 import PropertyTable from '@/components/PropertyTable';
 import TopBar from '@/components/TopBar';
@@ -13,6 +14,7 @@ import {
   money,
   num,
   taxClassLabel,
+  tierOf,
 } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -72,7 +74,20 @@ export default async function PropertyPage({ params }: Params) {
         <p className="detail-sub">
           {boroName(p.boro)}
           {p.zip_code ? ` · ${p.zip_code}` : ''}
-          {p.city_name ? ` · ${p.city_name}` : ''} · BBL {formatBbl(p.parid)}
+          {p.city_name ? ` · ${p.city_name}` : ''} · BBL{' '}
+          {formatBbl(p.boro, p.block, p.lot)}
+        </p>
+        <p style={{ marginTop: 12 }}>
+          {p.eligible ? (
+            <EligibleBadge />
+          ) : p.on_supplemental ? (
+            <span className="crumb">
+              On the supplemental roll · does not match the published surcharge
+              criteria
+            </span>
+          ) : (
+            <NotOnRollNote />
+          )}
         </p>
       </div>
 
@@ -99,11 +114,12 @@ export default async function PropertyPage({ params }: Params) {
       <section className="section">
         <h2>Parcel identifiers</h2>
         <div className="grid">
-          <Cell label="PARID / BBL" value={p.parid} />
-          <Cell label="Formatted BBL" value={formatBbl(p.parid)} dim />
+          <Cell label="PARID" value={p.parid} />
+          <Cell label="BBL" value={formatBbl(p.boro, p.block, p.lot)} />
+          <Cell label="BBL (numeric)" value={String(p.bbl)} dim />
           <Cell label="Borough code" value={`${p.boro} · ${boroName(p.boro)}`} />
-          <Cell label="Block" value={num(p.block)} />
-          <Cell label="Lot" value={num(p.lot)} />
+          <Cell label="Block" value={String(p.block)} />
+          <Cell label="Lot" value={String(p.lot)} />
           <Cell label="Apartment" value={p.aptno || DASH} />
           <Cell label="Co-op number" value={p.coop_num || DASH} />
           <Cell label="Condo number" value={p.condo_number || DASH} />
@@ -111,13 +127,20 @@ export default async function PropertyPage({ params }: Params) {
           <Cell label="Street" value={p.street_name || DASH} />
           <Cell label="ZIP code" value={p.zip_code || DASH} />
           <Cell label="Source roll" value={`${p.source_file} · ${p.tax_year}`} />
+          <Cell
+            label="Supplemental roll"
+            value={p.on_supplemental ? 'Listed' : 'Not listed'}
+            dim={!p.on_supplemental}
+          />
         </div>
       </section>
 
       <section className="section">
         <h2>Owner of record</h2>
         <div className="owner-line">
-          <span className="owner-name">{p.owner || 'Name not on file'}</span>
+          <span className="owner-name">
+            {p.owner_norm ? p.owner : 'No owner on file'}
+          </span>
           {owner && owner.property_count > 1 && (
             <Link href={`/owner/${encodeURIComponent(owner.owner_norm)}`} className="badge">
               ▣ {num(owner.property_count)} properties
@@ -131,8 +154,10 @@ export default async function PropertyPage({ params }: Params) {
             <Cell label="Combined full market value" value={money(owner.total_fmv)} />
           </div>
         ) : (
-          <p className="crumb" style={{ marginTop: 10 }}>
-            No usable owner name on this record — it is not counted toward any owner.
+          <p className="crumb" style={{ marginTop: 10, textTransform: 'none' }}>
+            The roll carries {p.owner ? `“${p.owner}”` : 'a blank'} here, which is a
+            placeholder rather than a name — this parcel is not counted toward any
+            owner.
           </p>
         )}
       </section>
@@ -166,6 +191,7 @@ export default async function PropertyPage({ params }: Params) {
                 latitude={p.latitude as number}
                 fmv={p.fmv}
                 parid={p.parid}
+                tier={tierOf(p)}
               />
             </div>
             <p className="crumb" style={{ marginTop: 8 }}>

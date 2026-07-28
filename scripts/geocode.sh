@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Millionaires' Row — step 2: fetch PLUTO bbl -> lat/lon and geocode `properties`.
+# Millionaires' Row — step 3: fetch PLUTO bbl -> lat/lon and geocode `properties`.
+# Run after scripts/import.sh and scripts/import_avroll.sh; see the pipeline
+# order comment at the top of scripts/import.sh. Geocodes every row in
+# `properties`, both tiers, so it is safe (and required) to re-run after a merge.
 #
 # Source: NYC Open Data (Socrata) resource 64uk-42ks — "Primary Land Use Tax Lot
 # Output (PLUTO)". Downloaded in pages of $PAGE rows and cached under data/pluto/
@@ -189,14 +192,25 @@ SELECT CASE boro WHEN 1 THEN 'Manhattan' WHEN 2 THEN 'Bronx' WHEN 3 THEN 'Brookl
                  ELSE boro::text END                                AS borough,
        count(*)                                                     AS properties,
        count(latitude)                                              AS with_coords,
-       round(100.0 * count(latitude) / nullif(count(*), 0), 2)       AS pct
+       round(100.0 * count(latitude) / nullif(count(*), 0), 2)       AS pct,
+       count(*) FILTER (WHERE on_supplemental)                      AS supp,
+       round(100.0 * count(latitude) FILTER (WHERE on_supplemental)
+             / nullif(count(*) FILTER (WHERE on_supplemental), 0), 2) AS supp_pct
 FROM properties GROUP BY boro ORDER BY boro;
 
 SELECT 'ALL'                                                        AS borough,
        count(*)                                                     AS properties,
        count(latitude)                                              AS with_coords,
-       round(100.0 * count(latitude) / nullif(count(*), 0), 2)       AS pct
+       round(100.0 * count(latitude) / nullif(count(*), 0), 2)       AS pct,
+       count(*) FILTER (WHERE on_supplemental)                      AS supp,
+       round(100.0 * count(latitude) FILTER (WHERE on_supplemental)
+             / nullif(count(*) FILTER (WHERE on_supplemental), 0), 2) AS supp_pct
 FROM properties;
+
+\echo '--- rows still missing coordinates, by building class ---'
+SELECT coalesce(bldg_class, '(none)') AS bldg_class, count(*)
+FROM properties WHERE latitude IS NULL
+GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 SQL
 
 COVERAGE=$("${PSQL[@]}" -tAd "$DB" -c \

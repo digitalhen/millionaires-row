@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { PropertyListItem } from '@/lib/types';
 import { boroName, buildingClassLabel, money } from '@/lib/format';
+import { EligibleMark } from './EligibleBadge';
 
 export default function PropertyTable({ rows }: { rows: PropertyListItem[] }) {
   if (!rows.length) return <p className="crumb">No properties.</p>;
@@ -19,15 +20,16 @@ export default function PropertyTable({ rows }: { rows: PropertyListItem[] }) {
           {rows.map((r) => (
             <tr key={r.parid}>
               <td>
+                {r.eligible && <EligibleMark />}
                 <Link href={`/property/${encodeURIComponent(r.parid)}`}>{r.address}</Link>
               </td>
-              <td>{boroName(r.boro)}</td>
+              <td className="nowrap">{boroName(r.boro)}</td>
               <td>
                 {r.bldg_class ? (
                   <>
                     {r.bldg_class}
                     {buildingClassLabel(r.bldg_class) ? (
-                      <span style={{ color: 'var(--grey-2)' }}>
+                      <span className="hide-sm" style={{ color: 'var(--grey-2)' }}>
                         {' '}
                         · {buildingClassLabel(r.bldg_class)}
                       </span>

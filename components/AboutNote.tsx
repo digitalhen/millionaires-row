@@ -18,6 +18,15 @@ export default function AboutNote({ compact = false }: { compact?: boolean }) {
         and addresses are reproduced as published by DOF.
       </p>
       <p>
+        Parcels marked in <span style={{ color: 'var(--red)' }}>red</span> match
+        the criteria DOF published for the surcharge — broadly, class 1 houses
+        over $5M and condo or co-op units at $1M and above. DOF describes the
+        roll as <em>including but not limited to</em> properties that may be
+        subject, and a property used as the owner&rsquo;s primary residence is
+        generally exempt, so a red mark means{' '}
+        <strong>may be subject</strong>, never that tax is owed.
+      </p>
+      <p>
         Dollar figures are DOF <strong>full market value (FMV)</strong>{' '}
         estimates used for assessment purposes. They are not sale prices,
         appraisals, or listing prices.{' '}

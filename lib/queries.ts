@@ -1,6 +1,8 @@
 import { query, queryOne } from './db';
+import { onSupplementalSql, schemaFlags, tierSql } from './schema';
 import type {
   MapPoint,
+  MapTier,
   OwnerResponse,
   OwnerSummary,
   Property,
@@ -19,8 +21,22 @@ export const SEARCH_MAX_LIMIT = 100;
 /** Exact counts are capped so a query like "STREET" cannot cost a full scan. */
 export const SEARCH_COUNT_CAP = 10_000;
 export const OWNER_PROPERTY_CAP = 500;
-export const OVERVIEW_LIMIT = 40_000;
-export const POINTS_MAX_LIMIT = 50_000;
+/** Size of the uniform (non-eligible) part of the citywide overview sample. */
+export const OVERVIEW_LIMIT = 55_000;
+export const POINTS_MAX_LIMIT = 120_000;
+
+/**
+ * Eligibility — the rule the pipeline used to populate `properties.eligible`,
+ * reproduced here for reference only (the app never recomputes it):
+ *
+ *   tax_class 1x  AND bldg_class Ax, Bx or C0  AND fmv >  $5,000,000
+ *   OR bldg_class Rx (condo unit)             AND fmv >= $1,000,000
+ *   OR co-op unit (parid contains '-U')       AND fmv >= $1,000,000
+ *
+ * DOF publishes the roll as "including but not limited to" properties that may
+ * be subject to the surcharge, and primary-residence use generally exempts an
+ * owner — so the UI always says *may be* subject, never that tax is owed.
+ */
 
 /** Escape LIKE/ILIKE wildcards in user input. Used with ESCAPE '\'. */
 function escapeLike(s: string): string {
@@ -52,6 +68,7 @@ export async function search(
   const contains = `%${esc}%`;
   const prefix = `${esc}%`;
   const where = SEARCH_FILTER[mode];
+  const flags = await schemaFlags();
 
   // Rank: exact match first, then prefix match, then anything containing the
   // term. Ties broken by value (biggest money first) then parid for stability.
@@ -62,6 +79,8 @@ export async function search(
             p.owner,
             p.owner_norm,
             p.fmv,
+            p.eligible,
+            ${onSupplementalSql(flags)} AS on_supplemental,
             COALESCE(o.property_count, 1)::int AS property_count
        FROM properties p
        LEFT JOIN owners o ON o.owner_norm = p.owner_norm
@@ -92,8 +111,10 @@ export async function search(
 }
 
 export async function getProperty(parid: string): Promise<PropertyResponse | null> {
+  const flags = await schemaFlags();
   const property = await queryOne<Property>(
-    `SELECT * FROM properties WHERE parid = $1`,
+    `SELECT p.*, ${onSupplementalSql(flags)} AS on_supplemental
+       FROM properties p WHERE p.parid = $1`,
     [parid],
   );
   if (!property) return null;
@@ -109,10 +130,11 @@ export async function getProperty(parid: string): Promise<PropertyResponse | nul
     );
     if (owner && owner.property_count > 1) {
       otherProperties = await query<PropertyListItem>(
-        `SELECT parid, address, boro, tax_class, bldg_class, fmv
-           FROM properties
-          WHERE owner_norm = $1 AND parid <> $2
-          ORDER BY fmv DESC NULLS LAST, parid
+        `SELECT p.parid, p.address, p.boro, p.tax_class, p.bldg_class, p.fmv,
+                p.eligible, ${onSupplementalSql(flags)} AS on_supplemental
+           FROM properties p
+          WHERE p.owner_norm = $1 AND p.parid <> $2
+          ORDER BY p.fmv DESC NULLS LAST, p.parid
           LIMIT 50`,
         [property.owner_norm, parid],
       );
@@ -123,6 +145,7 @@ export async function getProperty(parid: string): Promise<PropertyResponse | nul
 }
 
 export async function getOwner(ownerNorm: string): Promise<OwnerResponse | null> {
+  const flags = await schemaFlags();
   const owner = await queryOne<OwnerSummary>(
     `SELECT owner_norm, display_name, property_count, total_fmv
        FROM owners WHERE owner_norm = $1`,
@@ -131,10 +154,11 @@ export async function getOwner(ownerNorm: string): Promise<OwnerResponse | null>
   if (!owner) return null;
 
   const properties = await query<PropertyListItem>(
-    `SELECT parid, address, boro, tax_class, bldg_class, fmv
-       FROM properties
-      WHERE owner_norm = $1
-      ORDER BY fmv DESC NULLS LAST, parid
+    `SELECT p.parid, p.address, p.boro, p.tax_class, p.bldg_class, p.fmv,
+            p.eligible, ${onSupplementalSql(flags)} AS on_supplemental
+       FROM properties p
+      WHERE p.owner_norm = $1
+      ORDER BY p.fmv DESC NULLS LAST, p.parid
       LIMIT $2`,
     [ownerNorm, OWNER_PROPERTY_CAP],
   );
@@ -146,7 +170,13 @@ export async function getOwner(ownerNorm: string): Promise<OwnerResponse | null>
   };
 }
 
-type PointRow = { lng: number; lat: number; fmv: number | null; parid: string };
+type PointRow = {
+  lng: number;
+  lat: number;
+  fmv: number | null;
+  parid: string;
+  tier: number;
+};
 
 function toPoints(rows: PointRow[]): MapPoint[] {
   return rows.map((r) => [
@@ -154,22 +184,35 @@ function toPoints(rows: PointRow[]): MapPoint[] {
     Math.round(r.lat * 1e5) / 1e5,
     r.fmv,
     r.parid,
+    (r.tier ?? 1) as MapTier,
   ]);
 }
 
 /**
- * Deterministic, value-weighted downsample of the whole city. Top-N by FMV with
- * `parid` as a stable tiebreak means the same rows come back on every request,
- * which is what makes the long cache headers safe.
+ * Deterministic citywide downsample.
+ *
+ * Two parts, both stable across requests (which is what makes the long cache
+ * headers safe):
+ *   1. every eligible parcel, so the red marks never pop in and out with zoom;
+ *   2. a uniform pseudo-random sample of everything else, ordered by
+ *      md5(parid). Uniform — not top-FMV — because a value-weighted sample
+ *      makes on-screen density wildly unrepresentative (Staten Island's ~120k
+ *      parcels barely registered under the old top-FMV rule).
  */
 export async function getOverviewPoints(limit = OVERVIEW_LIMIT): Promise<MapPoint[]> {
   const lim = Math.min(Math.max(1, Math.floor(limit) || OVERVIEW_LIMIT), POINTS_MAX_LIMIT);
+  const flags = await schemaFlags();
+  const tier = tierSql(flags);
   const rows = await query<PointRow>(
-    `SELECT longitude AS lng, latitude AS lat, fmv, parid
-       FROM properties
-      WHERE longitude IS NOT NULL AND latitude IS NOT NULL
-      ORDER BY fmv DESC NULLS LAST, parid
-      LIMIT $1`,
+    `(SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid, ${tier} AS tier
+        FROM properties p
+       WHERE p.eligible AND p.longitude IS NOT NULL AND p.latitude IS NOT NULL)
+     UNION ALL
+     (SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid, ${tier} AS tier
+        FROM properties p
+       WHERE NOT p.eligible AND p.longitude IS NOT NULL AND p.latitude IS NOT NULL
+       ORDER BY md5(p.parid)
+       LIMIT $1)`,
     [lim],
   );
   return toPoints(rows);
@@ -183,12 +226,14 @@ export async function getPointsInBbox(
   limit = 20_000,
 ): Promise<MapPoint[]> {
   const lim = Math.min(Math.max(1, Math.floor(limit) || 20_000), POINTS_MAX_LIMIT);
+  const flags = await schemaFlags();
   const rows = await query<PointRow>(
-    `SELECT longitude AS lng, latitude AS lat, fmv, parid
-       FROM properties
-      WHERE longitude BETWEEN $1 AND $3
-        AND latitude BETWEEN $2 AND $4
-      ORDER BY fmv DESC NULLS LAST, parid
+    `SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid,
+            ${tierSql(flags)} AS tier
+       FROM properties p
+      WHERE p.longitude BETWEEN $1 AND $3
+        AND p.latitude BETWEEN $2 AND $4
+      ORDER BY ${tierSql(flags)} DESC, p.fmv DESC NULLS LAST, p.parid
       LIMIT $5`,
     [minLng, minLat, maxLng, maxLat, lim],
   );
@@ -196,12 +241,23 @@ export async function getPointsInBbox(
 }
 
 export async function getStats(): Promise<StatsResponse> {
+  const flags = await schemaFlags();
   const [props, owners, topOwners] = await Promise.all([
-    queryOne<{ properties: number; with_coords: number; total_fmv: number | null }>(
+    queryOne<{
+      properties: number;
+      with_coords: number;
+      total_fmv: number | null;
+      eligible_count: number;
+      eligible_fmv: number | null;
+      supplemental_count: number;
+    }>(
       `SELECT count(*)::int AS properties,
-              count(longitude)::int AS with_coords,
-              COALESCE(sum(fmv), 0) AS total_fmv
-         FROM properties`,
+              count(p.longitude)::int AS with_coords,
+              COALESCE(sum(p.fmv), 0) AS total_fmv,
+              count(*) FILTER (WHERE p.eligible)::int AS eligible_count,
+              COALESCE(sum(p.fmv) FILTER (WHERE p.eligible), 0) AS eligible_fmv,
+              count(*) FILTER (WHERE ${onSupplementalSql(flags)})::int AS supplemental_count
+         FROM properties p`,
     ),
     queryOne<{ owners: number; multi_owners: number }>(
       `SELECT count(*)::int AS owners,
@@ -222,6 +278,9 @@ export async function getStats(): Promise<StatsResponse> {
     owners: owners?.owners ?? 0,
     multiOwners: owners?.multi_owners ?? 0,
     totalFmv: props?.total_fmv ?? 0,
+    supplementalCount: props?.supplemental_count ?? 0,
+    eligibleCount: props?.eligible_count ?? 0,
+    eligibleFmv: props?.eligible_fmv ?? 0,
     topOwners,
   };
 }

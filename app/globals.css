@@ -7,6 +7,7 @@
   --grey-2: #7a7a7a; /* labels */
   --grey-3: #444; /* hairlines */
   --grey-4: #1a1a1a; /* panel fill */
+  --red: #ff3b30; /* the one accent: matches DOF surcharge criteria */
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
   color-scheme: dark;
@@ -98,6 +99,68 @@ a.badge:hover {
   color: var(--bg);
 }
 
+/* The single semantic accent: parcels matching DOF's surcharge criteria. */
+.badge-eligible {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.eligible-mark {
+  color: var(--red);
+  font-size: 9px;
+  line-height: 1;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+
+.stat-eligible b,
+.stat-eligible {
+  color: var(--red) !important;
+}
+
+.map-legend {
+  margin: 0 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+}
+
+.map-legend .key {
+  font-size: 9px;
+  margin-right: 5px;
+  vertical-align: 1px;
+}
+
+.map-legend .key-roll {
+  color: var(--fg);
+}
+
+.map-legend .key-city {
+  color: #4d4d4d;
+}
+
+.map-legend .key-eligible {
+  color: var(--red);
+}
+
+.map-legend .key:not(:first-child) {
+  margin-left: 16px;
+}
+
+.badge-muted {
+  border-color: var(--grey-3);
+  color: var(--grey-2);
+}
+
+.not-on-roll {
+  color: var(--grey-2);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* ---------- page chrome ---------- */
 
 .page {
@@ -140,7 +203,10 @@ a.badge:hover {
 .map-shell {
   position: fixed;
   inset: 0;
+  /* dvh keeps the layout correct while mobile browser chrome shows/hides */
+  height: 100dvh;
   background: #000;
+  overflow: hidden;
 }
 
 .map-canvas {
@@ -168,8 +234,15 @@ a.badge:hover {
 }
 
 .hero {
-  padding: 22px 22px 0;
-  max-width: 620px;
+  padding: 22px 22px 44px;
+  width: 100%;
+  max-width: 640px;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.94) 0%,
+    rgba(0, 0, 0, 0.9) 78%,
+    rgba(0, 0, 0, 0) 100%
+  );
 }
 
 .hero h1 {
@@ -359,7 +432,14 @@ a.badge:hover {
   padding: 5px 8px;
   font-size: 11px;
   white-space: nowrap;
+  max-width: 70vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transform: translate(12px, -50%);
+}
+
+.map-tooltip.flip {
+  transform: translate(calc(-100% - 12px), -50%);
 }
 
 .map-tooltip .t-fmv {
@@ -377,9 +457,25 @@ a.badge:hover {
   justify-content: space-between;
   align-items: flex-end;
   gap: 16px;
-  padding: 14px 22px;
+  padding: 26px 22px 14px;
   flex-wrap: wrap;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.94) 0%,
+    rgba(0, 0, 0, 0.88) 55%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+/* Keep the footer note clear of the open details panel. */
+.map-shell.has-panel .map-foot {
+  padding-right: 432px;
+}
+
+@media (max-width: 760px) {
+  .map-shell.has-panel .map-foot {
+    padding-right: 14px;
+  }
 }
 
 .map-status {
@@ -520,6 +616,10 @@ table.ledger tbody tr:hover {
   background: #0d0d0d;
 }
 
+table.ledger td.nowrap {
+  white-space: nowrap;
+}
+
 table.ledger td.num,
 table.ledger th.num {
   text-align: right;
@@ -563,6 +663,115 @@ table.ledger td a {
   line-height: 1.5;
   max-width: 60ch;
   text-align: right;
+}
+
+/* ---------- details panel (desktop) / bottom sheet (mobile) ---------- */
+
+.panel {
+  position: absolute;
+  z-index: 40;
+  top: 14px;
+  right: 14px;
+  bottom: 14px;
+  width: 400px;
+  max-width: calc(100vw - 28px);
+  background: #000;
+  border: 1px solid #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 18px 18px 22px;
+}
+
+.panel-grab {
+  display: none;
+}
+
+.panel-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 38px;
+  height: 38px;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--grey-3);
+  border-bottom: 1px solid var(--grey-3);
+  color: var(--grey-1);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.panel-close:hover {
+  background: #fff;
+  color: #000;
+}
+
+.panel-addr {
+  font-size: 19px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin: 4px 34px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.panel-sub {
+  margin: 6px 0 0;
+  color: var(--grey-1);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.panel-fmv-block {
+  margin: 18px 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--grey-3);
+  border-bottom: 1px solid var(--grey-3);
+}
+
+.panel-fmv {
+  font-size: 32px;
+  line-height: 1.1;
+  margin: 4px 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-rows dt {
+  margin-bottom: 3px;
+}
+
+.panel-rows dd {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.panel-rows .dim {
+  color: var(--grey-2);
+}
+
+.panel-full {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 8px 12px;
+  font-size: 11px;
 }
 
 /* ---------- maplibre control skin ---------- */
@@ -615,34 +824,301 @@ table.ledger td a {
   margin: 14px 0 26px;
 }
 
-@media (max-width: 640px) {
+/* ---------- responsive ---------- */
+
+/*
+ * Phones and small tablets: stack the page instead of overlaying it. The header
+ * (title + search) becomes a solid block at the top, the map takes the
+ * remaining height beneath it, and the note sits under the map. Nothing is
+ * layered over the search field, so the typeahead can never be clipped by the
+ * map canvas and every result stays tappable.
+ */
+@media (max-width: 760px) {
+  .map-shell {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .map-overlay {
+    order: 0;
+    position: relative;
+    inset: auto;
+    flex: 0 0 auto;
+    pointer-events: auto;
+    background: #000;
+    border-bottom: 1px solid var(--grey-3);
+    z-index: 30;
+  }
+
+  /* Scoped to the home map only — the mini-map keeps its absolute fill. */
+  .map-shell > .map-canvas {
+    order: 1;
+    position: relative;
+    inset: auto;
+    flex: 1 1 auto;
+    min-height: 220px;
+  }
+
+  .map-foot {
+    order: 2;
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    pointer-events: auto;
+    background: #000;
+    border-top: 1px solid var(--grey-3);
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  }
+
   .hero {
-    padding: 14px 14px 0;
+    padding: 14px 14px 12px;
     max-width: none;
+    background: none;
+  }
+
+  .hero h1,
+  .hero .tagline,
+  .hero-stats {
+    text-shadow: none;
   }
 
   .hero h1 {
-    font-size: 16px;
-    letter-spacing: 0.22em;
+    font-size: 17px;
+    letter-spacing: 0.2em;
   }
 
+  .hero .tagline {
+    font-size: 11px;
+    margin: 6px 0 10px;
+  }
+
+  .hero-stats {
+    gap: 6px 14px;
+    margin-top: 10px;
+  }
+
+  .about--compact {
+    display: block;
+    text-align: left;
+    max-width: none;
+  }
+
+  /* Comfortable tap targets. */
+  .search input {
+    padding: 13px 12px;
+    font-size: 16px; /* keeps iOS Safari from zooming on focus */
+  }
+
+  .search-modes button {
+    min-width: 46px;
+    padding: 0 8px;
+  }
+
+  .search-results {
+    max-height: 55vh;
+  }
+
+  /* The panel becomes a bottom sheet over the lower half of the map. */
+  .panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    max-height: 62dvh;
+    border: 0;
+    border-top: 1px solid #fff;
+    transition: transform 0.18s ease-out;
+  }
+
+  .panel-grab {
+    display: block;
+    flex: 0 0 auto;
+    height: 26px;
+    position: relative;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  .panel-grab::after {
+    content: '';
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 46px;
+    height: 2px;
+    background: var(--grey-2);
+  }
+
+  .panel-body {
+    padding: 4px 16px calc(22px + env(safe-area-inset-bottom));
+  }
+
+  .panel-close {
+    width: 44px;
+    height: 44px;
+    border-bottom-color: transparent;
+  }
+
+  .panel-addr {
+    font-size: 17px;
+  }
+
+  .panel-fmv {
+    font-size: 28px;
+  }
+
+  .panel-full {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .result {
+    padding: 12px;
+    min-height: 56px;
+  }
+
+  a.badge,
+  .result .badge {
+    padding: 5px 8px;
+  }
+}
+
+/* Very small phones — trim anything optional. */
+@media (max-width: 480px) {
   .hero .tagline {
     display: none;
   }
 
-  .map-foot {
-    padding: 10px 14px;
+  /* Give the input the full width and drop the mode switches onto their own
+     row so nothing is squeezed into an unreadable strip. */
+  .search-row {
+    flex-wrap: wrap;
   }
 
-  .about--compact {
-    display: none;
+  .search input {
+    flex: 1 0 100%;
   }
 
-  .fmv-block .fmv {
-    font-size: 30px;
+  .search-modes {
+    width: 100%;
+    border-left: 0;
+    border-top: 1px solid var(--grey-3);
   }
 
   .search-modes button {
-    padding: 0 7px;
+    flex: 1 1 0;
+    min-height: 42px;
+  }
+
+  .hero h1 {
+    font-size: 15px;
+    letter-spacing: 0.16em;
+  }
+
+  .map-tooltip {
+    max-width: 78vw;
+  }
+}
+
+/* Detail pages. */
+@media (max-width: 760px) {
+  .page {
+    padding: 0 14px 48px;
+  }
+
+  .topbar {
+    gap: 8px 12px;
+    padding: 12px 0;
+  }
+
+  .topbar .wordmark {
+    font-size: 12px;
+    letter-spacing: 0.2em;
+  }
+
+  .detail-head h1 {
+    font-size: 19px;
+    letter-spacing: 0.04em;
+  }
+
+  .fmv-block .fmv {
+    font-size: 32px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+
+  .owner-line .owner-name {
+    font-size: 16px;
+  }
+
+  .mini-map {
+    height: 220px;
+  }
+
+  /* Table stays inside its own scroller; the page never scrolls sideways. */
+  table.ledger {
+    min-width: 420px;
+    font-size: 12px;
+  }
+
+  /* Drop the prose building-class label so the table fits a phone. */
+  .hide-sm {
+    display: none;
+  }
+
+  table.ledger td,
+  table.ledger th {
+    padding: 10px 12px;
+  }
+
+  table.ledger td a,
+  .about a,
+  .crumb a {
+    display: inline-block;
+    min-height: 44px;
+    padding: 11px 0;
+    line-height: 22px;
+  }
+
+  a.badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 10px;
+  }
+}
+
+/* Long owner names / addresses must wrap rather than widen the page. */
+.detail-head h1,
+.owner-line .owner-name,
+.cell .value,
+.result-addr,
+.result-owner {
+  overflow-wrap: anywhere;
+}
+
+table.ledger td {
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 760px) {
+  .result-addr,
+  .result-owner {
+    white-space: normal;
+  }
+
+  .result-sub {
+    flex-wrap: wrap;
   }
 }

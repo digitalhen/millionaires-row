@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import type { Feature, Point } from 'geojson';
 import type { GeoJSONSource, MapLayerMouseEvent, Map as MapLibreMap } from 'maplibre-gl';
 import type { MapPoint } from '@/lib/types';
@@ -11,17 +10,23 @@ import {
   NYC_CENTER,
   baseStyle,
   highlightLayer,
+  hitLayer,
+  selectionLayers,
   pointsToGeoJSON,
-  propertyLayer,
-  squareIcon,
+  propertyLayers,
 } from '@/lib/mapStyle';
+import { withBase, withBaseVersioned } from '@/lib/basePath';
 import { money } from '@/lib/format';
 import { loadMapLibre } from '@/lib/maplibre';
 import AboutNote from './AboutNote';
 
 /** Above this zoom we fetch the exact parcels in view instead of the overview. */
-const DETAIL_ZOOM = 13;
+const DETAIL_ZOOM = 12;
 const MOVE_DEBOUNCE_MS = 300;
+/** Cap on a single viewport fetch. */
+const BBOX_LIMIT = 40_000;
+/** Zoom the camera settles on when a parcel is selected. */
+const SELECT_ZOOM = 14.3;
 
 type Tooltip = {
   x: number;
@@ -29,12 +34,22 @@ type Tooltip = {
   parid: string;
   fmv: number | null;
   address: string | null;
+  /** render to the left of the cursor when near the right edge */
+  flip: boolean;
 };
 
 const addressCache = new Map<string, string>();
 
-export default function MapExplorer() {
-  const router = useRouter();
+export type MapFocus = { lng: number; lat: number; parid: string };
+
+export default function MapExplorer({
+  focus,
+  onSelect,
+}: {
+  /** Coordinates of the selected parcel, or null when nothing is selected. */
+  focus: MapFocus | null;
+  onSelect: (parid: string) => void;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const overviewRef = useRef<MapPoint[] | null>(null);
@@ -44,10 +59,14 @@ export default function MapExplorer() {
 
   const [status, setStatus] = useState('Loading parcels…');
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
+  const [ready, setReady] = useState(false);
+  // The grey background tier only exists once the full city roll is loaded.
+  const [hasCityTier, setHasCityTier] = useState(false);
 
   const setData = useCallback((points: MapPoint[]) => {
     const map = mapRef.current;
     if (!map) return;
+    if (points.some((pt) => pt[4] === 0)) setHasCityTier(true);
     const src = map.getSource('props') as GeoJSONSource | undefined;
     if (src) src.setData(pointsToGeoJSON(points));
   }, []);
@@ -67,14 +86,14 @@ export default function MapExplorer() {
         if (modeRef.current === 'overview') return;
         if (!overviewRef.current) {
           setStatus('Loading citywide overview…');
-          const res = await fetch('/api/map/overview', { signal: ac.signal });
+          const res = await fetch(withBaseVersioned('/api/map/overview'), { signal: ac.signal });
           if (!res.ok) throw new Error(`overview ${res.status}`);
           overviewRef.current = (await res.json()) as MapPoint[];
         }
         modeRef.current = 'overview';
         setData(overviewRef.current);
         setStatus(
-          `Overview · ${overviewRef.current.length.toLocaleString()} highest-value parcels · zoom in for all`,
+          `Overview · sample of ${overviewRef.current.length.toLocaleString()} parcels · zoom in for all`,
         );
       } else {
         const b = map.getBounds();
@@ -84,7 +103,7 @@ export default function MapExplorer() {
           b.getEast().toFixed(5),
           b.getNorth().toFixed(5),
         ].join(',');
-        const res = await fetch(`/api/map/points?bbox=${bbox}&limit=20000`, {
+        const res = await fetch(withBase(`/api/map/points?bbox=${bbox}&limit=${BBOX_LIMIT}`), {
           signal: ac.signal,
         });
         if (!res.ok) throw new Error(`points ${res.status}`);
@@ -92,7 +111,9 @@ export default function MapExplorer() {
         modeRef.current = 'viewport';
         setData(points);
         setStatus(
-          `In view · ${points.length.toLocaleString()} parcels${points.length >= 20000 ? ' (capped)' : ''}`,
+          points.length >= BBOX_LIMIT
+            ? `In view · first ${BBOX_LIMIT.toLocaleString()} parcels — zoom in for the rest`
+            : `In view · ${points.length.toLocaleString()} parcels`,
         );
       }
     } catch (err) {
@@ -113,9 +134,12 @@ export default function MapExplorer() {
       map = new maplibre.Map({
         container: containerRef.current,
         style: baseStyle(),
+        // Frame the whole city regardless of viewport shape — a fixed zoom
+        // crops badly on a phone.
+        bounds: NYC_BOUNDS,
+        fitBoundsOptions: { padding: 8, duration: 0 },
         center: NYC_CENTER,
-        zoom: 10.1,
-        minZoom: 8.5,
+        minZoom: 8,
         maxZoom: 19,
         maxBounds: NYC_BOUNDS,
         attributionControl: false,
@@ -129,14 +153,15 @@ export default function MapExplorer() {
 
       map.on('load', () => {
         if (!map) return;
-        if (!map.hasImage('sq')) map.addImage('sq', squareIcon());
-
         map.addSource('props', { type: 'geojson', data: EMPTY_FC });
         map.addSource('hover', { type: 'geojson', data: EMPTY_FC });
-        map.addLayer(propertyLayer('props', 'props'));
+        map.addSource('sel', { type: 'geojson', data: EMPTY_FC });
+        map.addLayer(hitLayer('hit', 'props'));
+        for (const layer of propertyLayers('props')) map.addLayer(layer);
         map.addLayer(highlightLayer('hover', 'hover'));
+        for (const layer of selectionLayers('sel')) map.addLayer(layer);
 
-        map.on('mousemove', 'props', (e: MapLayerMouseEvent) => {
+        map.on('mousemove', 'hit', (e: MapLayerMouseEvent) => {
           const f = (e.features ?? [])[0];
           if (!f) return;
           const parid = String(f.properties?.p ?? '');
@@ -155,9 +180,10 @@ export default function MapExplorer() {
             parid,
             fmv,
             address: addressCache.get(parid) ?? null,
+            flip: e.point.x > map!.getCanvas().clientWidth - 240,
           });
           if (!addressCache.has(parid)) {
-            fetch(`/api/property/${encodeURIComponent(parid)}`)
+            fetch(withBase(`/api/property/${encodeURIComponent(parid)}`))
               .then((r) => (r.ok ? r.json() : null))
               .then((d) => {
                 if (!d?.property) return;
@@ -170,19 +196,22 @@ export default function MapExplorer() {
           }
         });
 
-        map.on('mouseleave', 'props', () => {
+        map.on('mouseleave', 'hit', () => {
           if (!map) return;
           map.getCanvas().style.cursor = '';
           (map.getSource('hover') as GeoJSONSource).setData(EMPTY_FC);
           setTooltip(null);
         });
 
-        map.on('click', 'props', (e: MapLayerMouseEvent) => {
+        // Fires for a touch tap as well as a mouse click: opens the details
+        // panel rather than navigating away from the map.
+        map.on('click', 'hit', (e: MapLayerMouseEvent) => {
           const f = (e.features ?? [])[0];
           const parid = f?.properties?.p;
-          if (parid) router.push(`/property/${encodeURIComponent(String(parid))}`);
+          if (parid) onSelect(String(parid));
         });
 
+        setReady(true);
         void refresh();
       });
 
@@ -201,19 +230,68 @@ export default function MapExplorer() {
       map?.remove();
       mapRef.current = null;
     };
-  }, [refresh, router]);
+  }, [refresh, onSelect]);
+
+  /* Selection: ring the chosen parcel and glide the camera to it, keeping the
+     point clear of the side panel (desktop) or bottom sheet (mobile). */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const src = map.getSource('sel') as GeoJSONSource | undefined;
+    if (!src) return;
+    if (!focus) {
+      src.setData(EMPTY_FC);
+      return;
+    }
+    const feature: Feature = {
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Point', coordinates: [focus.lng, focus.lat] },
+    };
+    src.setData(feature);
+
+    const canvas = map.getCanvas();
+    const isSheet = window.matchMedia('(max-width: 760px)').matches;
+    const offset: [number, number] = isSheet
+      ? [0, -Math.round(canvas.clientHeight * 0.24)]
+      : [-Math.round(Math.min(canvas.clientWidth * 0.22, 210)), 0];
+
+    map.flyTo({
+      center: [focus.lng, focus.lat],
+      // Neighbourhood scale — enough context to place the parcel. Never zoom
+      // the user back out if they are already closer in than that.
+      zoom: Math.max(map.getZoom(), SELECT_ZOOM),
+      offset,
+      duration: 1100,
+      essential: true,
+    });
+  }, [focus, ready]);
 
   return (
     <>
       <div ref={containerRef} className="map-canvas" aria-label="Map of New York City properties" />
       {tooltip && (
-        <div className="map-tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+        <div
+          className={`map-tooltip${tooltip.flip ? ' flip' : ''}`}
+          style={{ left: tooltip.x, top: tooltip.y }}
+        >
           <div>{tooltip.address ?? tooltip.parid}</div>
           <div className="t-fmv">{money(tooltip.fmv)}</div>
         </div>
       )}
       <div className="map-foot">
-        <p className="map-status">{status}</p>
+        <div>
+          <p className="map-legend">
+            {hasCityTier && (
+              <>
+                <span className="key key-city">■</span> NYC property
+              </>
+            )}
+            <span className="key key-roll">■</span> supplemental roll
+            <span className="key key-eligible">■</span> may be subject
+          </p>
+          <p className="map-status">{status}</p>
+        </div>
         <AboutNote compact />
       </div>
     </>

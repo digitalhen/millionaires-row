@@ -9,3 +9,4 @@ data/seed/*.sql.gz
 *.log
 .DS_Store
 /public/maplibre/
+*.tsbuildinfo
