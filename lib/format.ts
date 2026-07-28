@@ -120,6 +120,38 @@ export function addressLabel(
   return bbl ? `BBL ${formatBbl(bbl.boro, bbl.block, bbl.lot)}` : 'No address on roll';
 }
 
+/**
+ * One-to-two sentence summary for sharing a property — rides along with the
+ * link in the native share sheet and the clipboard copy. Factual tone only:
+ * "may be subject", never "will be taxed".
+ */
+export function shareSummary(p: {
+  address: string | null;
+  boro: number;
+  block: number;
+  lot: number;
+  fmv: number | null;
+  owner: string | null;
+  eligible: boolean;
+  on_supplemental: boolean;
+}): string {
+  const parts: string[] = [];
+  const addr = addressLabel(p.address, p);
+  const where = boroName(p.boro);
+  parts.push(
+    p.fmv != null
+      ? `${addr}, ${where} — DOF full market value ${money(p.fmv)}.`
+      : `${addr}, ${where}.`,
+  );
+  if (p.owner) parts.push(`Owner: ${p.owner}.`);
+  if (p.eligible) {
+    parts.push("May be subject to NYC's non-primary residence surcharge.");
+  } else if (p.on_supplemental) {
+    parts.push("On NYC's 2027 supplemental tax roll.");
+  }
+  return parts.join(' ');
+}
+
 export function taxClassLabel(taxClass: string): string {
   switch (taxClass) {
     case '1':

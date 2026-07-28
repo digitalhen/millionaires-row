@@ -29,6 +29,7 @@ import {
   isNycZip,
   money,
   num,
+  shareSummary,
   taxClassLabel,
   tierOf,
 } from '@/lib/format';
@@ -191,7 +192,11 @@ export default async function PropertyPage({ params }: Params) {
       <div className="detail-head">
         <div className="detail-title-row">
           <h1>{label}</h1>
-          <ShareButton path={`/property/${encodeURIComponent(p.parid)}`} title={label} />
+          <ShareButton
+            path={`/?p=${encodeURIComponent(p.parid)}`}
+            title={label}
+            text={shareSummary(p)}
+          />
         </div>
         {/* Borough and ZIP double as links up to their aggregate pages. The
             ZIP only links when it is a real NYC ZIP — the roll also carries

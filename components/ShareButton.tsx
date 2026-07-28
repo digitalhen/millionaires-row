@@ -9,7 +9,16 @@ import { SITE_URL, withBase } from '../lib/basePath';
  * ('/property/…'); shared URLs always use the production origin so a link
  * copied from a dev box still points somewhere real.
  */
-export default function ShareButton({ path, title }: { path: string; title: string }) {
+export default function ShareButton({
+  path,
+  title,
+  text,
+}: {
+  path: string;
+  title: string;
+  /** One-to-two sentence summary included with the share / copied above the link. */
+  text?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   const url =
@@ -19,22 +28,24 @@ export default function ShareButton({ path, title }: { path: string; title: stri
         ? `${window.location.origin}${withBase(path)}`
         : `${SITE_URL}${withBase(path)}`;
 
+  const clipboardPayload = text ? `${text}\n${url}` : url;
+
   async function share() {
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
-        await navigator.share({ title, url });
+        await navigator.share({ title, text, url });
         return;
       } catch {
         // Dismissed the sheet, or share failed — fall through to copy.
       }
     }
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(clipboardPayload);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard blocked (rare) — show the URL so it can be copied by hand.
-      window.prompt('Copy link', url);
+      // Clipboard blocked (rare) — show it so it can be copied by hand.
+      window.prompt('Copy', clipboardPayload);
     }
   }
 

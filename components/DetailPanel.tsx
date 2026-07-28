@@ -10,6 +10,7 @@ import {
   formatBbl,
   money,
   num,
+  shareSummary,
   taxClassLabel,
 } from '@/lib/format';
 import BuildingUnits from './BuildingUnits';
@@ -173,8 +174,9 @@ export default function DetailPanel({
                 Full details →
               </Link>
               <ShareButton
-                path={`/property/${encodeURIComponent(p.parid)}`}
+                path={`/?p=${encodeURIComponent(p.parid)}`}
                 title={addressLabel(p.address, p)}
+                text={shareSummary(p)}
               />
             </div>
 

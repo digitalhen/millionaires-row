@@ -1,23 +1,78 @@
 import type { Metadata } from 'next';
 import HomeView from '@/components/HomeView';
 import JsonLd from '@/components/JsonLd';
-import { getStats } from '@/lib/queries';
+import { addressLabel, boroName, money } from '@/lib/format';
+import { getPropertyCard, getStats } from '@/lib/queries';
 import {
   SITE_DESCRIPTION,
   SITE_NAME,
   SITE_TAGLINE,
   absoluteUrl,
+  decodeParam,
+  propertyPath,
 } from '@/lib/seo';
 import type { StatsResponse } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
+const HOME_METADATA: Metadata = {
   // `absolute` so the home page is not "Millionaires' Row | Millionaires' Row".
   title: { absolute: `${SITE_NAME} — ${SITE_TAGLINE}` },
   description: SITE_DESCRIPTION,
   alternates: { canonical: absoluteUrl('/') },
 };
+
+/**
+ * Shared links land on the map with the parcel's panel open (`/?p=parid`), so
+ * when a selection is in the URL the metadata — title, description and the
+ * social card — must be the parcel's, not the site's. Canonical stays on
+ * `/property/[parid]`, which serves the same record as a page.
+ */
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ p?: string }>;
+}): Promise<Metadata> {
+  const { p: selected } = await searchParams;
+  if (!selected?.trim()) return HOME_METADATA;
+
+  const p = await getPropertyCard(decodeParam(selected).trim()).catch(() => null);
+  if (!p) return HOME_METADATA;
+
+  const label = addressLabel(p.address, p);
+  const title = p.fmv != null ? `${label} — ${money(p.fmv)}` : label;
+  const description = [
+    `${label}, ${boroName(p.boro)}.`,
+    `Owner of record: ${p.owner_norm ? p.owner_display || p.owner : 'none on file'}.`,
+    `DOF full market value ${money(p.fmv)}.`,
+    p.eligible
+      ? "This parcel may be subject to NYC's non-primary residence surcharge."
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const ogImage = absoluteUrl(`${propertyPath(p.parid)}/opengraph-image`);
+
+  return {
+    title: { absolute: `${title} | ${SITE_NAME}` },
+    description,
+    alternates: { canonical: absoluteUrl(propertyPath(p.parid)) },
+    openGraph: {
+      type: 'website',
+      url: absoluteUrl(`/?p=${encodeURIComponent(p.parid)}`),
+      siteName: SITE_NAME,
+      title: `${title} | ${SITE_NAME}`,
+      description,
+      images: [ogImage],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${title} | ${SITE_NAME}`,
+      description,
+      images: [ogImage],
+    },
+  };
+}
 
 export default async function HomePage() {
   let stats: StatsResponse | null = null;
