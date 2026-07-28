@@ -1,11 +1,18 @@
 import type { NextConfig } from 'next';
 
 /**
- * The app is deployed under a subpath in production
- * (https://apps.cleartextlabs.com/millionaires-row) and at the root locally.
- * Everything derives from NEXT_PUBLIC_BASE_PATH so there is a single switch.
+ * Production lives at the root of its own domain (millionairesrownyc.com);
+ * NEXT_PUBLIC_BASE_PATH remains as a switch in case a subpath deploy is ever
+ * needed again.
  */
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
+/**
+ * Canonical origin. The www host 301s here — one URL per page for crawlers,
+ * shares, and analytics.
+ */
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://millionairesrownyc.com';
+const siteHost = new URL(siteUrl).host;
 
 /**
  * Changes on every build. Long-lived API/asset caches are keyed on it so a new
@@ -43,6 +50,16 @@ const nextConfig: NextConfig = {
       {
         source: '/:path(|leaderboards|property/.*|owner/.*)',
         headers: [{ key: 'Cache-Control', value: HTML_CACHE_CONTROL }],
+      },
+    ];
+  },
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: `www.${siteHost}` }],
+        destination: `${siteUrl}/:path*`,
+        permanent: true,
       },
     ];
   },
