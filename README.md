@@ -58,12 +58,38 @@ npm run dev                # uses DATABASE_URL from .env.local
 `DATABASE_URL` examples:
 `postgres://mrow:mrow@localhost:5435/mrow` (full) or `.../mrow_dev` (sample).
 
-## Deployment
+## Deployment (Dokploy, git-based)
 
-Deployed to Dokploy (git-based) — each instance runs the app plus its own
-Postgres restored from `data/seed/mrow.dump`. The data is a static public
-record, so instances don't need to sync. Full steps land with the production
-packaging (Dockerfile + `docker-compose.yml`).
+Each Dokploy instance runs the whole stack from this repo — app + its own
+Postgres 16, seeded automatically from the committed `data/seed/mrow.dump`
+(60 MB) on first boot. The data is a static public record, so the two
+instances never need to sync.
+
+On **each** Dokploy instance:
+
+1. Create a **Compose** service pointing at
+   `https://github.com/digitalhen/millionaires-row`, branch `main`,
+   compose file `docker-compose.yml`.
+2. Environment: set `POSTGRES_PASSWORD` to something real. The site URL is
+   baked into the image at build time via the `NEXT_PUBLIC_SITE_URL` build
+   arg (defaults to `https://millionairesrownyc.com` in the Dockerfile —
+   override per-instance only if needed).
+3. Add the domain `millionairesrownyc.com` to the `app` service (port 3000);
+   Dokploy's Traefik will provision the Let's Encrypt certificate.
+4. Deploy. First boot takes ~1–2 min while the `seed` one-shot restores the
+   dump; subsequent deploys skip it (it detects the existing `properties`
+   table).
+
+To refresh data later: rebuild the dump locally (`scripts/` pipeline), commit
+it, push, then on each instance drop the `pgdata` volume (or
+`DROP TABLE properties, owners` and re-run the seed service) and redeploy.
+
+Local production rehearsal:
+
+```bash
+docker compose -p mrow-prod up -d --build
+docker exec mrow-prod-app-1 wget -qO- http://127.0.0.1:3000/api/stats
+```
 
 ## Data & provenance
 
