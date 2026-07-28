@@ -24,7 +24,12 @@ CREATE TABLE IF NOT EXISTS properties (
   address      text NOT NULL,
   latitude     double precision,
   longitude    double precision,
-  source_file  text NOT NULL
+  source_file  text NOT NULL,
+  -- Best-effort match of DOF's stated surcharge criteria (see data/LAYOUT.md):
+  -- 1-3 family homes (class A*/B*/C0) with FMV > $5M, or condo units (R*) /
+  -- co-op units (parid '-U' suffix) with FMV >= $1M. The roll itself is
+  -- broader; this flag marks properties the criteria appear to cover.
+  eligible     boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS owners (
