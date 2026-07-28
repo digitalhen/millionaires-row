@@ -147,6 +147,23 @@ export function isBuildingScaleRecord(code: string | null | undefined): boolean 
 export const BUILDING_SCALE_NOTE =
   "This record covers a whole building's residential portion, not an individual home.";
 
+/**
+ * Explicit per-class explanation for building-scale records. R9 is the co-op
+ * case and gets the full "co-ops don't work like that" wording: apartments in
+ * a co-op are not separately assessed, so there are no per-apartment records
+ * to show unless DOF published unit rows for the building.
+ */
+export function buildingScaleNote(code: string | null | undefined): string {
+  if ((code ?? '').trim().toUpperCase() === 'R9') {
+    return (
+      'This is a co-op: residents own shares in the corporation, not their ' +
+      'apartments, so the city assesses the whole residential portion as this ' +
+      'one parcel. Individual co-op apartments are not separately valued here.'
+    );
+  }
+  return BUILDING_SCALE_NOTE;
+}
+
 /** Caption fragment for a building-scale figure ("DOF estimate · …"). */
 export const BUILDING_SCALE_CAPTION = 'entire building/co-op';
 

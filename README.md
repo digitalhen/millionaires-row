@@ -34,8 +34,11 @@ Total valuation on the roll: about **$1 trillion** across 959,710 properties.
 
 ## Local development
 
-Raw DOF CSVs go in `data/raw/` (gitignored):
-`supplemental_roll_TC1_2027.csv`, `supplemental_roll_TC2_2027.csv`.
+Raw DOF files go in `data/raw/` (gitignored): the supplemental roll
+(`supplemental_roll_TC1_2027.csv`, `supplemental_roll_TC2_2027.csv`) and the
+full FY27 assessment roll (`fy27_avroll1234.zip` →
+`data/raw/avroll/PROPMAST_ORE_2027_FIN.txt`, which also carries DOF's
+assessed/exempt values).
 
 ```bash
 # 1. Postgres (host port 5435)
@@ -44,11 +47,15 @@ docker compose -f docker-compose.dev.yml up -d
 # 2. Either: quick 10k-row sample db (mrow_dev, fake coords)
 ./scripts/dev_sample.sh
 
-#    Or: the full pipeline (mrow db, real PLUTO coordinates)
-./scripts/import.sh        # load 960k rows
-./scripts/geocode.sh       # download PLUTO, join coordinates
-./scripts/build_owners.sh  # owners table + indexes
-./scripts/dump_seed.sh     # production seed dump -> data/seed/mrow.dump
+#    Or: the full pipeline (mrow db, real PLUTO coordinates). Order matters —
+#    see the PIPELINE ORDER comment at the top of scripts/import.sh.
+./scripts/import.sh         # supplemental roll: 960k rows, provisional `eligible`
+./scripts/import_avroll.sh  # full FY27 roll: +240k rows, assessed/exempt values,
+                            # and the FINAL `eligible` flag (required for tier 3)
+./scripts/geocode.sh        # download PLUTO, join coordinates
+./scripts/build_owners.sh   # owners table + indexes
+./scripts/build_map_dots.sh # collapse stacked records into map dots
+./scripts/dump_seed.sh      # production seed dump -> data/seed/mrow.dump
 
 # 3. App
 npm install

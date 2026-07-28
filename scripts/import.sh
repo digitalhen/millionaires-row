@@ -4,10 +4,16 @@
 #
 # PIPELINE ORDER (each step is idempotent; run them in this sequence):
 #   1. scripts/import.sh         supplemental roll  -> properties (on_supplemental=true)
+#                                sets `eligible` PROVISIONALLY
 #   2. scripts/import_avroll.sh  full FY27 roll     -> properties (on_supplemental=false)
+#                                loads assessed_av/exempt_av and FINALIZES
+#                                `eligible` (step 2 is REQUIRED for a correct
+#                                flag — DOF's exemption values are only on the
+#                                full roll, so this order is not optional)
 #   3. scripts/geocode.sh        PLUTO -> latitude/longitude for every row
 #   4. scripts/build_owners.sh   derive owners, indexes, ANALYZE
-#   5. scripts/dump_seed.sh      pg_dump -Fc -> data/seed/mrow.dump
+#   5. scripts/build_map_dots.sh collapse stacked records into map_dots
+#   6. scripts/dump_seed.sh      pg_dump -Fc -> data/seed/mrow.dump
 #
 # Idempotent: drops and recreates the database from scratch every run.
 # NOTE: this destroys pluto_coords, the avroll rows and any geocoding, so the
@@ -168,19 +174,61 @@ SQL
 LOADED=$("${PSQL[@]}" -tAd "$DB" -c "SELECT count(*) FROM properties;")
 echo "==> properties rows: $LOADED"
 
-# --- eligible flag -----------------------------------------------------------
+# --- eligible flag (provisional; finalized in import_avroll.sh) --------------
 # Best-effort match of DOF's stated surcharge criteria (see scripts/schema.sql):
 # 1-3 family homes (class A*/B*/C0) over $5M, or condo units (R*) / co-op units
 # (synthetic '-U' parid) at $1M or more. Run as a post-load UPDATE because the
 # co-op-unit test depends on the parid synthesized above.
-echo "==> flagging eligible properties"
+#
+# NOTE: this is not the final flag. The criteria also do not apply to parcels
+# that are wholly tax-exempt (consulates, foreign missions, city agencies,
+# HDFC housing companies), and DOF's exemption values live on the *full* FY27
+# roll, not the supplemental one. scripts/import_avroll.sh loads them and
+# demotes those rows, so it MUST run after this script for `eligible` to be
+# correct. Running import.sh alone leaves ~176 fully-exempt rows flagged.
+#
+# R-SUBCLASS DECISION (which R* rows are dwelling-scale, DOF building classes)
+#   The criteria apply to condo/co-op UNITS, so any R record that represents a
+#   whole building must be excluded. Decided per subclass from the DOF class
+#   definitions and verified against this roll (owner-name patterns, FMV
+#   distributions, sampled addresses):
+#     R0  condo BILLING lot — a building-scale aggregate, never a dwelling.
+#         EXCLUDED. (10,957 exist on the full FY27 roll, all with NULL FMV;
+#         none appear on the supplemental roll, so this is defensive only.)
+#     R1  condo unit, 2-10 unit bldg      } dwelling-scale. KEPT. 18,659 /
+#     R2  condo unit, walk-up             } 13,641 / 23,387 / 198,585 / 2,373
+#     R3  condo unit, 1-3 storey          } rows on the roll, effectively zero
+#     R4  condo unit, elevator bldg       } "%OWNERS CORP%" / "%TENANTS%" /
+#     R6  condo unit, 1-3 storey, orig    } "%APT CORP%" owners (176 of 198,585
+#         class 1                         } in R4, 0-1 elsewhere), ~100% carry a
+#                                           real aptno, and the top rows are
+#                                           penthouses (220 Central Park South
+#                                           APT 50, 520 Park Ave DPH54, ...).
+#     R5  misc commercial, R7/R8 commercial condo units — not residential;
+#         none appear on the supplemental roll. EXCLUDED implicitly (no rows).
+#     R9  "co-op within a condominium": the co-op corporation's ENTIRE
+#         residential portion held as one condo lot. EXCLUDED unless the row is
+#         itself a '-U' co-op unit row. Evidence: of 337 R9 lot-rows, 83 are
+#         "%OWNERS CORP%", 7 "%TENANTS%", 7 "%APT CORP%"; 201 carry the
+#         roll-internal residential marker as their aptno (RES/RESI/RESD/...)
+#         rather than an apartment number; mean FMV $21.7M with a $189M max
+#         (whole buildings: 300 East 40th, 205 West End Ave). The 2,913 R9
+#         '-U' rows ARE individual co-op units (real apt numbers, mean FMV far
+#         below their parent) and stay eligible.
+#   Only R9 is building-scale among the subclasses present on the roll; the
+#   handful of non-R9 R rows carrying a RES-style aptno (61 rows, mostly the
+#   residential unit of a mixed-use condo, e.g. "141 WEST 24 STREET APT RES-7")
+#   are genuine single units and are deliberately left alone.
+echo "==> flagging eligible properties (provisional)"
 "${PSQL[@]}" -d "$DB" <<'SQL'
 UPDATE properties SET eligible = true
 WHERE on_supplemental AND (
       (tax_class LIKE '1%'
        AND (bldg_class LIKE 'A%' OR bldg_class LIKE 'B%' OR bldg_class = 'C0')
        AND fmv > 5000000)
-   OR (bldg_class LIKE 'R%' AND fmv >= 1000000)
+   OR (bldg_class LIKE 'R%' AND fmv >= 1000000
+       -- building-scale R records: only their '-U' unit rows qualify
+       AND (bldg_class NOT IN ('R0', 'R9') OR parid LIKE '%-U%'))
    OR (parid LIKE '%-U%' AND fmv >= 1000000));
 
 -- The criteria apply to condo/co-op UNITS. A co-op building record whose FMV

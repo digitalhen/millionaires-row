@@ -60,11 +60,15 @@ FROM staging_dev
 ON CONFLICT (parid) DO NOTHING;
 
 -- Sample rows all come from the supplemental roll (tier 2); mark eligibility
--- with the same rule as import.sh (tier 3).
+-- with the same rule as import.sh (tier 3), including the building-scale R0/R9
+-- exclusion. The sample has no avroll load, so assessed_av/exempt_av stay NULL
+-- and the tax-exempt finalization from import_avroll.sh cannot run here — the
+-- dev flag is therefore import.sh's provisional one.
 UPDATE properties SET on_supplemental = true;
 UPDATE properties SET eligible = true WHERE
      (tax_class LIKE '1%' AND (bldg_class LIKE 'A%' OR bldg_class LIKE 'B%' OR bldg_class = 'C0') AND fmv > 5000000)
-  OR (bldg_class LIKE 'R%' AND fmv >= 1000000)
+  OR (bldg_class LIKE 'R%' AND fmv >= 1000000
+      AND (bldg_class NOT IN ('R0', 'R9') OR parid LIKE '%-U%'))
   OR (parid LIKE '%-U%' AND fmv >= 1000000);
 
 INSERT INTO owners (owner_norm, display_name, property_count, roll_count, eligible_count, total_fmv)

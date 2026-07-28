@@ -47,9 +47,9 @@ export const BUILDING_UNIT_CAP = 200;
  * extra points add no visible density, only bytes and a slower first paint. The
  * number that gets us there moved when the map switched from one dot per roll
  * record to one dot per *building* — consolidation turned 1.20M parcels into
- * 864k dots and, more to the point, 29k eligible parcels into 9,884 red dots.
+ * 864k dots and, more to the point, 29k eligible parcels into red dots (~9.5k after the exemption cleanup).
  * Holding the old 76,000 would have quietly spent a fifth of the budget, so the
- * uniform sample takes the freed room instead: 90,000 + 9,884 = 99,884 marks,
+ * uniform sample takes the freed room instead: 90,000 plus every red dot in marks,
  * the same picture at the same cost. (Taking all 864k dots is never cheaper —
  * it is 8.6x the payload for pixels that are already covered.)
  */
@@ -503,7 +503,7 @@ function toPoints(rows: PointRow[]): MapPoint[] {
  * points serialised, drawn and hit-tested to render a single dot — and 11,671
  * such stacks between them hid how few buildings the surcharge tier actually
  * covers. Collapsing them cut 1.20M parcels to 864k dots and, in the tier that
- * matters, 29k eligible parcels to 9,884 red buildings. Every field the map
+ * matters, ~28k eligible parcels to ~9.5k red buildings. Every field the map
  * needs is precomputed there, so neither query joins, filters on `eligible`, or
  * needs `schemaFlags()`: `map_dots.tier` already carries the three-tier rule.
  *
@@ -517,7 +517,7 @@ function toPoints(rows: PointRow[]): MapPoint[] {
  * Deterministic citywide downsample.
  *
  * Two parts:
- *   1. every tier-2 dot — all 9,884 of them — so the red marks never pop in and
+ *   1. every tier-2 dot — all of them — so the red marks never pop in and
  *      out with zoom;
  *   2. a uniform pseudo-random sample of everything else, across both the
  *      supplemental roll and the wider city assessment roll. Uniform, not

@@ -22,7 +22,7 @@ import {
 } from '@/lib/seo';
 import {
   BUILDING_SCALE_CAPTION,
-  BUILDING_SCALE_NOTE,
+  buildingScaleNote,
   addressLabel,
   boroName,
   boroSlug,
@@ -237,7 +237,7 @@ export default async function PropertyPage({ params }: Params) {
             the address, before any reader gets to the eight-figure value. */}
         {buildingScale && (
           <p className="crumb" style={{ marginTop: 10, textTransform: 'none' }}>
-            {BUILDING_SCALE_NOTE}
+            {buildingScaleNote(p.bldg_class)}
           </p>
         )}
       </div>

@@ -25,16 +25,36 @@ CREATE TABLE IF NOT EXISTS properties (
   latitude     double precision,
   longitude    double precision,
   source_file  text NOT NULL,          -- 'TC1' | 'TC2' | 'AVROLL'
+  -- DOF's own assessed / exempt values for the parcel, from the FY27 assessment
+  -- roll (PROPMAST_ORE_2027_FIN.txt, valuation group 4, fields 49 and 50 — see
+  -- the FIELD MAP in scripts/import_avroll.sh).
+  --   assessed_av = actual assessed total value (whole dollars)
+  --   exempt_av   = portion of that assessed value covered by exemptions
+  -- NULL means only "no full-roll counterpart": the synthetic '-U' co-op unit
+  -- rows, and every row of the mrow_dev sample (no avroll load). A parcel that
+  -- carries no assessed value, or no exemption, stores 0 rather than NULL.
+  -- A parcel is "fully exempt" when assessed_av > 0 AND exempt_av >= 95% of
+  -- assessed_av; ordinary homes sit at 0 or a few percent (STAR, veterans).
+  assessed_av  bigint,
+  exempt_av    bigint,
   -- Best-effort match of DOF's stated surcharge criteria (see data/LAYOUT.md):
   -- 1-3 family homes (class A*/B*/C0) with FMV > $5M, or condo units (R*) /
   -- co-op units (parid '-U' suffix) with FMV >= $1M. The roll itself is
   -- broader; this flag marks properties the criteria appear to cover.
+  -- Set provisionally by scripts/import.sh and FINALIZED by
+  -- scripts/import_avroll.sh, which demotes fully-exempt parcels once the
+  -- exemption values above are loaded. See both scripts for the exclusions.
   eligible     boolean NOT NULL DEFAULT false,
   -- Tier 2: this parcel appears on the 2027 *supplemental* roll (the ~960k
   -- properties that may be subject to the surcharge). False for parcels that
   -- exist only on the full FY27 assessment roll (tier 1).
   on_supplemental boolean NOT NULL DEFAULT false
 );
+
+-- Idempotent upgrade path for databases created before these columns existed
+-- (CREATE TABLE IF NOT EXISTS above is a no-op on them).
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS assessed_av bigint;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS exempt_av   bigint;
 
 CREATE TABLE IF NOT EXISTS owners (
   owner_norm     text PRIMARY KEY,

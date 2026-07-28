@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { PropertyResponse } from '@/lib/types';
 import {
   BUILDING_SCALE_CAPTION,
-  BUILDING_SCALE_NOTE,
+  buildingScaleNote,
   addressLabel,
   boroName,
   buildingClassLabel,
@@ -129,7 +129,7 @@ export default function DetailPanel({
                 className="crumb"
                 style={{ margin: '10px 0 0', textTransform: 'none' }}
               >
-                {BUILDING_SCALE_NOTE}
+                {buildingScaleNote(p.bldg_class)}
               </p>
             )}
 
