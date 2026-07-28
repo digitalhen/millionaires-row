@@ -17,11 +17,11 @@ import {
   propertyLayers,
 } from '@/lib/mapStyle';
 import { withBase, withBaseVersioned } from '@/lib/basePath';
-import { money } from '@/lib/format';
+import { money, num } from '@/lib/format';
 import { hasWebGL2, loadMapLibre } from '@/lib/maplibre';
 import AboutNote from './AboutNote';
 
-/** Above this zoom we fetch the exact parcels in view instead of the overview. */
+/** Above this zoom we fetch the exact buildings in view instead of the overview. */
 const DETAIL_ZOOM = 12;
 const MOVE_DEBOUNCE_MS = 300;
 /** Cap on a single viewport fetch. */
@@ -44,11 +44,34 @@ type Tooltip = {
   parid: string;
   fmv: number | null;
   address: string | null;
+  /** roll records behind the dot; > 1 means a consolidated building */
+  members: number;
   /** render to the left of the cursor when near the right edge */
   flip: boolean;
 };
 
 const addressCache = new Map<string, string>();
+
+/**
+ * Label for a hovered dot.
+ *
+ * A dot is a building, but the parcel behind it is one arbitrary member of the
+ * stack — at 1 Irving Place the highest-value member is an office condo, so its
+ * address reads "1 IRVING PLACE, APT OFF1". Naming one unit while the dot
+ * stands for 651 of them is simply wrong, so the apartment clause is dropped
+ * once the dot is consolidated. It is removed by matching the parcel's own
+ * `aptno` rather than by hunting for a comma — the address is built as
+ * "<house> <street>[, APT <aptno>]" (scripts/import.sh), and if the two ever
+ * stop lining up the address is left exactly as the roll has it.
+ */
+function dotLabel(
+  property: { address: string; aptno?: string | null },
+  members: number,
+): string {
+  const suffix = property.aptno ? `, APT ${property.aptno.trim()}` : '';
+  if (members < 2 || !suffix || !property.address.endsWith(suffix)) return property.address;
+  return property.address.slice(0, -suffix.length);
+}
 
 export type MapFocus = { lng: number; lat: number; parid: string };
 
@@ -67,7 +90,7 @@ export default function MapExplorer({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modeRef = useRef<'overview' | 'viewport' | null>(null);
 
-  const [status, setStatus] = useState('Loading parcels…');
+  const [status, setStatus] = useState('Loading buildings…');
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
   const [ready, setReady] = useState(false);
   /** MapLibre could not start — no WebGL, or the module failed to load. */
@@ -109,7 +132,7 @@ export default function MapExplorer({
         modeRef.current = 'overview';
         setData(overviewRef.current);
         setStatus(
-          `Overview · sample of ${overviewRef.current.length.toLocaleString()} parcels · zoom in for all`,
+          `Overview · sample of ${overviewRef.current.length.toLocaleString()} buildings · zoom in for all`,
         );
       } else {
         const b = map.getBounds();
@@ -128,14 +151,14 @@ export default function MapExplorer({
         setData(points);
         setStatus(
           points.length >= BBOX_LIMIT
-            ? `In view · first ${BBOX_LIMIT.toLocaleString()} parcels — zoom in for the rest`
-            : `In view · ${points.length.toLocaleString()} parcels`,
+            ? `In view · first ${BBOX_LIMIT.toLocaleString()} buildings — zoom in for the rest`
+            : `In view · ${points.length.toLocaleString()} buildings`,
         );
       }
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') return;
       console.error(err);
-      setStatus('Could not load parcels');
+      setStatus('Could not load buildings');
     }
   }, [setData]);
 
@@ -158,7 +181,7 @@ export default function MapExplorer({
 
     (async () => {
       // No WebGL2 means no map, and MapLibre's own failure is silent (see
-      // `hasWebGL2`) — the status line used to read "Loading parcels…" for ever.
+      // `hasWebGL2`) — the status line used to read "Loading buildings…" for ever.
       if (!hasWebGL2()) {
         giveUp('WebGL2 is unavailable in this browser — map disabled', true);
         return;
@@ -215,6 +238,7 @@ export default function MapExplorer({
           if (!f) return;
           const parid = String(f.properties?.p ?? '');
           const fmv = f.properties?.v == null ? null : Number(f.properties.v);
+          const members = Number(f.properties?.n ?? 1) || 1;
           const coords = (f.geometry as Point).coordinates as [number, number];
           map!.getCanvas().style.cursor = 'pointer';
           const hovered: Feature = {
@@ -228,6 +252,7 @@ export default function MapExplorer({
             y: e.point.y,
             parid,
             fmv,
+            members,
             address: addressCache.get(parid) ?? null,
             flip: e.point.x > map!.getCanvas().clientWidth - 240,
           });
@@ -236,10 +261,11 @@ export default function MapExplorer({
               .then((r) => (r.ok ? r.json() : null))
               .then((d) => {
                 if (!d?.property) return;
-                addressCache.set(parid, d.property.address as string);
-                setTooltip((t) =>
-                  t && t.parid === parid ? { ...t, address: d.property.address } : t,
-                );
+                // A parid belongs to exactly one dot, so its member count — and
+                // therefore its label — is stable enough to cache.
+                const label = dotLabel(d.property, members);
+                addressCache.set(parid, label);
+                setTooltip((t) => (t && t.parid === parid ? { ...t, address: label } : t));
               })
               .catch(() => {});
           }
@@ -332,7 +358,13 @@ export default function MapExplorer({
           style={{ left: tooltip.x, top: tooltip.y }}
         >
           <div>{tooltip.address ?? tooltip.parid}</div>
-          <div className="t-fmv">{money(tooltip.fmv)}</div>
+          {/* A consolidated dot's value is the whole building's, so the unit
+              count is what says the figure is not one apartment's. */}
+          <div className="t-fmv">
+            {tooltip.members > 1
+              ? `${num(tooltip.members)} units · ${money(tooltip.fmv)}`
+              : money(tooltip.fmv)}
+          </div>
         </div>
       )}
       <div className="map-foot">

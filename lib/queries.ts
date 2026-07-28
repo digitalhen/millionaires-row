@@ -4,7 +4,6 @@ import {
   onSupplementalSql,
   ownerCountsSql,
   schemaFlags,
-  tierSql,
   type SchemaFlags,
 } from './schema';
 import type {
@@ -42,13 +41,19 @@ export const OWNER_PROPERTY_CAP = 500;
  */
 export const BUILDING_UNIT_CAP = 200;
 /**
- * Size of the uniform (non-eligible) part of the citywide overview sample.
- * Plus the ~29k always-included eligible parcels this lands at ~105k points:
- * 4.6MB of JSON, 1.4MB over the wire gzipped, fetched once and cached hard.
- * That is the ceiling worth paying — past it the marks overlap so heavily that
- * extra points add no visible density, only bytes and a slower first paint.
+ * Size of the uniform (non-red) part of the citywide overview sample.
+ *
+ * ~100k marks is the ceiling worth paying: past it they overlap so heavily that
+ * extra points add no visible density, only bytes and a slower first paint. The
+ * number that gets us there moved when the map switched from one dot per roll
+ * record to one dot per *building* — consolidation turned 1.20M parcels into
+ * 864k dots and, more to the point, 29k eligible parcels into 9,884 red dots.
+ * Holding the old 76,000 would have quietly spent a fifth of the budget, so the
+ * uniform sample takes the freed room instead: 90,000 + 9,884 = 99,884 marks,
+ * the same picture at the same cost. (Taking all 864k dots is never cheaper —
+ * it is 8.6x the payload for pixels that are already covered.)
  */
-export const OVERVIEW_LIMIT = 76_000;
+export const OVERVIEW_LIMIT = 90_000;
 export const POINTS_MAX_LIMIT = 120_000;
 
 /**
@@ -118,9 +123,7 @@ export async function search(
      *  2. on the supplemental roll, then not — the roll is what this site is
      *     about, so at equal match quality a roll parcel outranks a city-only
      *     one ("PARK AVENUE" used to return a page of NYCHA/DCAS/Parks slivers);
-     *  3. matches DOF's surcharge criteria, then not (`eligible` is a strict
-     *     subset of `on_supplemental`, so this only sorts inside the roll);
-     *  4. DOF value, biggest money first, then parid for a stable page 2.
+     *  3. DOF value, biggest money first, then parid for a stable page 2.
      *
      * The address arms of the quality CASE require the parcel to carry a house
      * number. ~27,800 rows are street beds and slivers filed under a bare street
@@ -473,6 +476,7 @@ type PointRow = {
   fmv: number | null;
   parid: string;
   tier: number;
+  members: number | null;
 };
 
 function toPoints(rows: PointRow[]): MapPoint[] {
@@ -482,37 +486,54 @@ function toPoints(rows: PointRow[]): MapPoint[] {
     r.fmv,
     r.parid,
     (r.tier ?? 1) as MapTier,
+    r.members ?? 1,
   ]);
 }
 
 /**
+ * Both map queries read `map_dots`, one row per building rather than per roll
+ * record (scripts/build_map_dots.sh). Consolidation is what the map is *for*:
+ * 1 Irving Place used to be 651 identical red marks on one coordinate — 651
+ * points serialised, drawn and hit-tested to render a single dot — and 11,671
+ * such stacks between them hid how few buildings the surcharge tier actually
+ * covers. Collapsing them cut 1.20M parcels to 864k dots and, in the tier that
+ * matters, 29k eligible parcels to 9,884 red buildings. Every field the map
+ * needs is precomputed there, so neither query joins, filters on `eligible`, or
+ * needs `schemaFlags()`: `map_dots.tier` already carries the three-tier rule.
+ *
+ * Sampling hash: `hashtext`, not `md5`. Both are deterministic (which is what
+ * makes the long cache headers safe) and both are uniform over parids; md5
+ * hashes into a 32-byte hex string and then sorts 854k of them, where hashtext
+ * sorts int4s. On the citywide overview that is 342ms against 65ms.
+ */
+
+/**
  * Deterministic citywide downsample.
  *
- * Two parts, both stable across requests (which is what makes the long cache
- * headers safe):
- *   1. every eligible parcel, so the red marks never pop in and out with zoom;
- *   2. a uniform pseudo-random sample of everything else — all ~1.17M
- *      remaining parcels across both the supplemental roll and the wider city
- *      assessment roll — ordered by md5(parid). Uniform, not top-FMV, because a
- *      value-weighted sample makes on-screen density wildly unrepresentative
- *      (Staten Island's ~120k parcels barely registered under the old rule) and
- *      because sampling the tiers at one rate is what makes the grey/white
- *      contrast on the map an honest picture of how much of the city is on the
- *      roll: each tier keeps its true share of the marks.
+ * Two parts:
+ *   1. every tier-2 dot — all 9,884 of them — so the red marks never pop in and
+ *      out with zoom;
+ *   2. a uniform pseudo-random sample of everything else, across both the
+ *      supplemental roll and the wider city assessment roll. Uniform, not
+ *      top-FMV, because a value-weighted sample makes on-screen density wildly
+ *      unrepresentative (Staten Island's ~120k parcels barely registered under
+ *      the old rule) and because sampling the tiers at one rate is what makes
+ *      the grey/white contrast an honest picture of how much of the city is on
+ *      the roll: each tier keeps its true share of the marks.
  */
 export async function getOverviewPoints(limit = OVERVIEW_LIMIT): Promise<MapPoint[]> {
   const lim = Math.min(Math.max(1, Math.floor(limit) || OVERVIEW_LIMIT), POINTS_MAX_LIMIT);
-  const flags = await schemaFlags();
-  const tier = tierSql(flags);
   const rows = await query<PointRow>(
-    `(SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid, ${tier} AS tier
-        FROM properties p
-       WHERE p.eligible AND p.longitude IS NOT NULL AND p.latitude IS NOT NULL)
+    `(SELECT d.longitude AS lng, d.latitude AS lat, d.fmv, d.parid,
+             d.tier, d.member_count AS members
+        FROM map_dots d
+       WHERE d.tier = 2)
      UNION ALL
-     (SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid, ${tier} AS tier
-        FROM properties p
-       WHERE NOT p.eligible AND p.longitude IS NOT NULL AND p.latitude IS NOT NULL
-       ORDER BY md5(p.parid)
+     (SELECT d.longitude AS lng, d.latitude AS lat, d.fmv, d.parid,
+             d.tier, d.member_count AS members
+        FROM map_dots d
+       WHERE d.tier <> 2
+       ORDER BY hashtext(d.parid)
        LIMIT $1)`,
     [lim],
   );
@@ -520,14 +541,14 @@ export async function getOverviewPoints(limit = OVERVIEW_LIMIT): Promise<MapPoin
 }
 
 /**
- * Parcels inside the current viewport, shaped exactly like the citywide
- * overview: every eligible parcel, then a uniform md5(parid) sample of the
- * rest. Zooming past DETAIL_ZOOM therefore swaps one point set for another
- * without the mix of tiers changing character.
+ * Dots inside the current viewport, shaped exactly like the citywide overview:
+ * every tier-2 dot, then a uniform hashtext(parid) sample of the rest. Zooming
+ * past DETAIL_ZOOM therefore swaps one point set for another without the mix of
+ * tiers changing character.
  *
  * The uniform sample matters most here. Ranking the remainder by FMV — or, as
  * an earlier cut did, by tier — meant a capped viewport over Staten Island
- * returned 40,000 white parcels and *zero* grey ones, so the background tier
+ * returned 40,000 white dots and *zero* grey ones, so the background tier
  * silently vanished at exactly the zoom where it should start to be legible.
  */
 export async function getPointsInBbox(
@@ -538,18 +559,15 @@ export async function getPointsInBbox(
   limit = 20_000,
 ): Promise<MapPoint[]> {
   const lim = Math.min(Math.max(1, Math.floor(limit) || 20_000), POINTS_MAX_LIMIT);
-  const flags = await schemaFlags();
-  const tier = tierSql(flags);
-  const box = `p.longitude BETWEEN $1 AND $3 AND p.latitude BETWEEN $2 AND $4`;
+  const box = `d.longitude BETWEEN $1 AND $3 AND d.latitude BETWEEN $2 AND $4`;
+  const cols = `d.longitude AS lng, d.latitude AS lat, d.fmv, d.parid,
+                d.tier, d.member_count AS members`;
   const rows = await query<PointRow>(
-    `(SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid, ${tier} AS tier
-        FROM properties p
-       WHERE ${box} AND p.eligible)
+    `(SELECT ${cols} FROM map_dots d WHERE ${box} AND d.tier = 2)
      UNION ALL
-     (SELECT p.longitude AS lng, p.latitude AS lat, p.fmv, p.parid, ${tier} AS tier
-        FROM properties p
-       WHERE ${box} AND NOT p.eligible
-       ORDER BY md5(p.parid)
+     (SELECT ${cols} FROM map_dots d
+       WHERE ${box} AND d.tier <> 2
+       ORDER BY hashtext(d.parid)
        LIMIT $5)`,
     [minLng, minLat, maxLng, maxLat, lim],
   );

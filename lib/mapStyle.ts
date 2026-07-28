@@ -9,9 +9,10 @@ export const BOROUGHS_GEOJSON = withBaseVersioned('/geo/nyc-boroughs.geojson');
  * changes. The client appends it to the request URL alongside the per-build
  * `?v=`, so a browser or CDN holding a long-cached copy from an older point set
  * can never serve it back. 3 = three tiers, one uniform sample across all 1.2M
- * NYC parcels.
+ * NYC parcels. 4 = one dot per building rather than per roll record, carrying a
+ * member count as a sixth element, sampled by hashtext rather than md5.
  */
-export const OVERVIEW_VERSION = 3;
+export const OVERVIEW_VERSION = 4;
 
 /** NYC, roughly. Used as the initial camera and as a clamp on panning. */
 export const NYC_CENTER: [number, number] = [-73.95, 40.705];
@@ -75,13 +76,20 @@ export const TIER_COLORS = {
 } as const;
 
 /**
- * Parcel marks use a `circle` layer rather than a square `symbol` layer:
- * MapLibre packs all symbols of one tile into a single bucket whose opacity
- * buffer tops out around 8k features, and the citywide overview puts tens of
- * thousands of parcels in one low-zoom tile ("opacityVertexArray.length !==
- * layoutVertexArray.length / 4"). Circle layers have no such limit and stay
- * smooth at 100k+ points; at these radii (1–6px) a dot and a square are
- * visually interchangeable.
+ * Value ramp for the white tier — the only tier whose per-mark value carries
+ * meaning (see `propertyLayers`). It is a clamped interpolate, so the top stop
+ * is a *saturation point*, not a maximum: the roll's largest parcel is $18.9bn
+ * and simply lands at opacity 1, exactly as a $25M one does.
+ *
+ * Re-checked when the marks became buildings rather than roll records, since a
+ * consolidated dot now carries its whole stack's value (1 Irving Place: $397M
+ * where each of its 651 lines was ~$600k). The white tier's distribution barely
+ * moved — median $815k → $977k, p99 $3.98M → $4.81M, and the share pinned at
+ * the top stop went 0.09% → 0.15% — because the aggregates that grow most are
+ * mostly *red*, and red does not use this ramp. 25M still sits above the white
+ * tier's 99.9th percentile, which is where a saturation point belongs: raising
+ * it to chase the handful of aggregates above it would dim the ~99% of marks
+ * this ramp exists to separate.
  */
 const FMV_OPACITY = [
   'interpolate',
@@ -157,6 +165,15 @@ const flatRamp = (low: number, mid: number, high: number) => [
 
 const tierIs = (t: number) => ['==', ['get', 'e'], t];
 
+/**
+ * Building marks use a `circle` layer rather than a square `symbol` layer:
+ * MapLibre packs all symbols of one tile into a single bucket whose opacity
+ * buffer tops out around 8k features, and the citywide overview puts tens of
+ * thousands of dots in one low-zoom tile ("opacityVertexArray.length !==
+ * layoutVertexArray.length / 4"). Circle layers have no such limit and stay
+ * smooth at 100k+ points; at these radii (1–6px) a dot and a square are
+ * visually interchangeable.
+ */
 function tierLayer(
   id: string,
   source: string,
@@ -298,7 +315,8 @@ export type PointFeatureCollection = {
   features: {
     type: 'Feature';
     id?: number;
-    properties: { p: string; v: number | null; e: MapTier };
+    /** p = parid, v = FMV, e = tier, n = roll records behind the dot. */
+    properties: { p: string; v: number | null; e: MapTier; n: number };
     geometry: { type: 'Point'; coordinates: [number, number] };
   }[];
 };
@@ -306,10 +324,10 @@ export type PointFeatureCollection = {
 export function pointsToGeoJSON(points: MapPoint[]): PointFeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: points.map(([lng, lat, fmv, parid, tier], i) => ({
+    features: points.map(([lng, lat, fmv, parid, tier, members], i) => ({
       type: 'Feature' as const,
       id: i,
-      properties: { p: parid, v: fmv, e: tier },
+      properties: { p: parid, v: fmv, e: tier, n: members ?? 1 },
       geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] },
     })),
   };

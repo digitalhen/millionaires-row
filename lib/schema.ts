@@ -73,13 +73,3 @@ export function ownerCountsSql(flags: SchemaFlags, alias = 'o'): string {
 export function ownerRollCountSql(flags: SchemaFlags, alias = 'o'): string {
   return flags.hasOwnerRollCounts ? `${alias}.roll_count` : `${alias}.property_count`;
 }
-
-/**
- * Render tier: 0 = every-NYC-property background, 1 = on the supplemental roll,
- * 2 = matches the surcharge criteria.
- */
-export function tierSql(flags: SchemaFlags, alias = 'p'): string {
-  return `CASE WHEN ${alias}.eligible THEN 2
-               WHEN ${onSupplementalSql(flags, alias)} THEN 1
-               ELSE 0 END`;
-}
