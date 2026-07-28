@@ -13,7 +13,10 @@ cd "$(dirname "$0")/.."
 
 CONTAINER="${MROW_CONTAINER:-mrow-postgres}"
 DB="${MROW_DB:-mrow}"
-PSQL=(docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U mrow)
+# The postgres container has docker's default 64 MB /dev/shm, too small for
+# parallel hash joins at full-roll scale ("could not resize shared memory
+# segment"). Pipeline sessions run single-threaded; the app is unaffected.
+PSQL=(docker exec -e PGOPTIONS=-cmax_parallel_workers_per_gather=0 -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U mrow)
 
 echo "==> rebuilding owners"
 "${PSQL[@]}" -d "$DB" <<'SQL'

@@ -59,10 +59,21 @@ SELECT
 FROM staging_dev
 ON CONFLICT (parid) DO NOTHING;
 
-INSERT INTO owners (owner_norm, display_name, property_count, total_fmv)
+-- Sample rows all come from the supplemental roll (tier 2); mark eligibility
+-- with the same rule as import.sh (tier 3).
+UPDATE properties SET on_supplemental = true;
+UPDATE properties SET eligible = true WHERE
+     (tax_class LIKE '1%' AND (bldg_class LIKE 'A%' OR bldg_class LIKE 'B%' OR bldg_class = 'C0') AND fmv > 5000000)
+  OR (bldg_class LIKE 'R%' AND fmv >= 1000000)
+  OR (parid LIKE '%-U%' AND fmv >= 1000000);
+
+INSERT INTO owners (owner_norm, display_name, property_count, roll_count, eligible_count, total_fmv)
 SELECT owner_norm,
        (array_agg(owner ORDER BY owner))[1],
-       count(*), coalesce(sum(fmv),0)
+       count(*),
+       count(*) FILTER (WHERE on_supplemental),
+       count(*) FILTER (WHERE eligible),
+       coalesce(sum(fmv),0)
 FROM properties WHERE owner_norm IS NOT NULL
 GROUP BY owner_norm;
 
