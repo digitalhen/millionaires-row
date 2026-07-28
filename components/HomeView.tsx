@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import DetailPanel from './DetailPanel';
 import MapExplorer from './MapExplorer';
 import SearchBox from './SearchBox';
 import { withBase } from '@/lib/basePath';
 import { moneyCompact, num } from '@/lib/format';
+import { LEADERBOARDS_PATH } from '@/lib/seo';
 import type { PropertyResponse, StatsResponse } from '@/lib/types';
 
 /**
@@ -115,6 +117,13 @@ export default function HomeView({ stats }: { stats: StatsResponse | null }) {
               </div>
             </>
           )}
+          {/* The one way out of the map view: the city-wide rankings, and from
+              there the borough and ZIP breakdowns. */}
+          <p className="hero-links">
+            <Link href={LEADERBOARDS_PATH} className="badge">
+              Leaderboards
+            </Link>
+          </p>
         </div>
       </div>
       <DetailPanel

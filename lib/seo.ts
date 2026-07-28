@@ -37,6 +37,18 @@ export function ownerPath(ownerNorm: string): string {
   return `/owner/${encodeURIComponent(ownerNorm)}`;
 }
 
+export const LEADERBOARDS_PATH = '/leaderboards';
+
+/** `slug` comes from `boroSlug()`, so it is already URL-safe. */
+export function boroughPath(slug: string): string {
+  return `/borough/${slug}`;
+}
+
+/** `zip` is validated as five digits before it ever reaches here. */
+export function zipPath(zip: string): string {
+  return `/zip/${zip}`;
+}
+
 /** Absolute URL of a route's generated Open Graph image. */
 export function ogImageUrl(routePath = ''): string {
   return absoluteUrl(`${routePath}/opengraph-image`.replace(/\/{2,}/g, '/'));

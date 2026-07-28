@@ -318,6 +318,10 @@ a.badge:hover {
   font-weight: 500;
 }
 
+.hero-links {
+  margin: 14px 0 0;
+}
+
 /* Second row: owners and money. Held back so the three-tier count above it
    reads as the headline rather than as one item in a list of six. */
 .hero-stats--sub {
@@ -561,6 +565,18 @@ a.badge:hover {
   text-transform: uppercase;
 }
 
+/* Place cross-links (borough, ZIP) sit inside the subtitle line, so they take
+   its colour and are marked only by the hairline underline. */
+.detail-sub a {
+  color: inherit;
+  border-bottom-color: var(--grey-3);
+}
+
+.detail-sub a:hover {
+  color: var(--fg);
+  background: none;
+}
+
 .fmv-block {
   display: flex;
   align-items: baseline;
@@ -685,6 +701,21 @@ table.ledger td a {
   border-bottom-color: var(--grey-3);
 }
 
+/* Ranked tables: the position column is furniture, not a figure. */
+table.ledger th.rank,
+table.ledger td.rank {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--grey-2);
+}
+
+/* Same rule as everywhere else: red means "may be subject", nothing else. */
+table.ledger td.num-eligible {
+  color: var(--red);
+}
+
 .mini-map {
   height: 260px;
   border: 1px solid var(--grey-3);
@@ -717,6 +748,68 @@ table.ledger td a {
   line-height: 1.5;
   max-width: 60ch;
   text-align: right;
+}
+
+/* Footer index of the aggregate pages. */
+.about-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--grey-3);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.about-nav a {
+  color: var(--grey-1);
+}
+
+.about-nav a:hover {
+  color: var(--fg);
+}
+
+/* In-page section jump list (leaderboards) and area cross-links. */
+.jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 12px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+}
+
+.jump a {
+  color: var(--grey-1);
+}
+
+.jump a:hover {
+  color: var(--fg);
+}
+
+/* A ZIP in the borough page's ZIP grid: the code, then its tier counts. */
+.zip-cell .zip-code {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--grey-3);
+}
+
+.zip-cell .zip-counts {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--grey-2);
+}
+
+.zip-cell .zip-counts .eligible {
+  color: var(--red);
 }
 
 /* ---------- details panel (desktop) / bottom sheet (mobile) ---------- */

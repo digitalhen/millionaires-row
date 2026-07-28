@@ -1,3 +1,36 @@
+import Link from 'next/link';
+import { BOROUGH_CODES, boroName, boroSlug } from '@/lib/format';
+import { LEADERBOARDS_PATH, boroughPath } from '@/lib/seo';
+
+/**
+ * Footnote for any table that sums FMV. The roll lists 764 co-op buildings
+ * *and* the units inside them, each carrying its own DOF value, so a column of
+ * summed values double-counts those buildings. Stated wherever a total appears
+ * rather than buried in the about note.
+ */
+export function CoopValueNote() {
+  return (
+    <p className="crumb" style={{ marginTop: 10, textTransform: 'none', letterSpacing: 0 }}>
+      Values are DOF estimates; co-op buildings and their units may both appear.
+    </p>
+  );
+}
+
+/** Site-wide index of the aggregate pages, carried in the page footer. */
+export function SiteNav() {
+  return (
+    <nav className="about-nav" aria-label="Aggregate pages">
+      <span className="label">Browse</span>
+      <Link href={LEADERBOARDS_PATH}>Leaderboards</Link>
+      {BOROUGH_CODES.map((boro) => (
+        <Link key={boro} href={boroughPath(boroSlug(boro))}>
+          {boroName(boro)}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 export default function AboutNote({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
@@ -45,6 +78,7 @@ export default function AboutNote({ compact = false }: { compact?: boolean }) {
         — eligibility depends on residency and other facts that are not in this
         dataset. Records may contain errors carried over from the source roll.
       </p>
+      <SiteNav />
     </div>
   );
 }

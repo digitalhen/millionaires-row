@@ -66,6 +66,15 @@ export function ownerCountsSql(flags: SchemaFlags, alias = 'o'): string {
 }
 
 /**
+ * ORDER BY fragment for "largest portfolio on the supplemental roll". Degrades
+ * to the city-wide holdings count, which is what `roll_count` collapses to on
+ * the pre-city-roll schema anyway.
+ */
+export function ownerRollCountSql(flags: SchemaFlags, alias = 'o'): string {
+  return flags.hasOwnerRollCounts ? `${alias}.roll_count` : `${alias}.property_count`;
+}
+
+/**
  * Render tier: 0 = every-NYC-property background, 1 = on the supplemental roll,
  * 2 = matches the surcharge criteria.
  */

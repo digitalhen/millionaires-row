@@ -12,14 +12,18 @@ import { getProperty, getPropertyCard } from '@/lib/queries';
 import {
   SITE_NAME,
   absoluteUrl,
+  boroughPath,
   decodeParam,
   ownerPath,
   propertyPath,
+  zipPath,
 } from '@/lib/seo';
 import {
   boroName,
+  boroSlug,
   buildingClassLabel,
   formatBbl,
+  isNycZip,
   money,
   num,
   taxClassLabel,
@@ -181,9 +185,21 @@ export default async function PropertyPage({ params }: Params) {
 
       <div className="detail-head">
         <h1>{p.address}</h1>
+        {/* Borough and ZIP double as links up to their aggregate pages. The
+            ZIP only links when it is a real NYC ZIP — the roll also carries
+            placeholders like '0' and the odd ZIP+4 string, which have no page. */}
         <p className="detail-sub">
-          {boroName(p.boro)}
-          {p.zip_code ? ` · ${p.zip_code}` : ''}
+          <Link href={boroughPath(boroSlug(p.boro))}>{boroName(p.boro)}</Link>
+          {p.zip_code ? (
+            <>
+              {' · '}
+              {isNycZip(p.zip_code) ? (
+                <Link href={zipPath(p.zip_code)}>{p.zip_code}</Link>
+              ) : (
+                p.zip_code
+              )}
+            </>
+          ) : null}
           {p.city_name ? ` · ${p.city_name}` : ''} · BBL{' '}
           {formatBbl(p.boro, p.block, p.lot)}
         </p>

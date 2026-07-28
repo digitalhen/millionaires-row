@@ -19,6 +19,44 @@ export function boroName(boro: number | null | undefined): string {
   return BOROUGHS[boro] ?? `Borough ${boro}`;
 }
 
+/**
+ * URL slugs for the five boroughs. Fixed strings rather than a slugify() of
+ * `BOROUGHS` — "The Bronx" would slug to `the-bronx`, and these are permanent
+ * public URLs, so they are written out and never derived.
+ */
+export const BOROUGH_SLUGS: Record<number, string> = {
+  1: 'manhattan',
+  2: 'bronx',
+  3: 'brooklyn',
+  4: 'queens',
+  5: 'staten-island',
+};
+
+export const BOROUGH_CODES: readonly number[] = [1, 2, 3, 4, 5];
+
+const SLUG_TO_BORO = new Map<string, number>(
+  Object.entries(BOROUGH_SLUGS).map(([code, slug]) => [slug, Number(code)]),
+);
+
+export function boroSlug(boro: number): string {
+  return BOROUGH_SLUGS[boro] ?? String(boro);
+}
+
+/** Borough code for a URL slug, or null when the slug is not one of the five. */
+export function boroFromSlug(slug: string): number | null {
+  return SLUG_TO_BORO.get(slug.trim().toLowerCase()) ?? null;
+}
+
+/**
+ * NYC ZIP codes are all 10xxx (Manhattan, the Bronx, Staten Island) or 11xxx
+ * (Brooklyn, Queens). The roll also carries a handful of out-of-range and
+ * placeholder values ('0', ZIP+4 strings, four rows in 00xxx and 12xxx); this
+ * is the gate that keeps them out of the URL space.
+ */
+export function isNycZip(zip: string): boolean {
+  return /^1[01]\d{3}$/.test(zip);
+}
+
 const usd = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
