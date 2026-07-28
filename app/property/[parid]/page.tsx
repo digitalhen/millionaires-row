@@ -195,7 +195,7 @@ export default async function PropertyPage({ params }: Params) {
           <ShareButton
             path={`/?p=${encodeURIComponent(p.parid)}`}
             title={label}
-            text={shareSummary(p)}
+            text={shareSummary(p, owner?.property_count)}
           />
         </div>
         {/* Borough and ZIP double as links up to their aggregate pages. The

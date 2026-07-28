@@ -121,35 +121,50 @@ export function addressLabel(
 }
 
 /**
- * One-to-two sentence summary for sharing a property — rides along with the
- * link in the native share sheet and the clipboard copy. Factual tone only:
- * "may be subject", never "will be taxed".
+ * Share text for a property — rides along with the link in the native share
+ * sheet and the clipboard copy. Tabloid energy, public-record facts: values
+ * are always attributed to the city and the tax is always "may", never "owes".
  */
-export function shareSummary(p: {
-  address: string | null;
-  boro: number;
-  block: number;
-  lot: number;
-  fmv: number | null;
-  owner: string | null;
-  eligible: boolean;
-  on_supplemental: boolean;
-}): string {
-  const parts: string[] = [];
+export function shareSummary(
+  p: {
+    address: string | null;
+    boro: number;
+    block: number;
+    lot: number;
+    fmv: number | null;
+    owner: string | null;
+    eligible: boolean;
+    on_supplemental: boolean;
+  },
+  ownerPropertyCount?: number | null,
+): string {
   const addr = addressLabel(p.address, p);
   const where = boroName(p.boro);
-  parts.push(
-    p.fmv != null
-      ? `${addr}, ${where} — DOF full market value ${money(p.fmv)}.`
-      : `${addr}, ${where}.`,
-  );
-  if (p.owner) parts.push(`Owner: ${p.owner}.`);
+  const value = p.fmv != null ? money(p.fmv) : null;
+  const who = p.owner ? `Owned by ${p.owner}` : 'Owner? Not on file 🤐';
+  const portfolio =
+    ownerPropertyCount && ownerPropertyCount > 1
+      ? ` — and that's just 1 of their ${num(ownerPropertyCount)} NYC properties 🧾`
+      : '';
+
   if (p.eligible) {
-    parts.push("May be subject to NYC's non-primary residence surcharge.");
-  } else if (p.on_supplemental) {
-    parts.push("On NYC's 2027 supplemental tax roll.");
+    return (
+      `👀 ${addr}, ${where} — the city pegs it at ${value ?? 'a mystery number'}. ` +
+      `${who}${portfolio}. ` +
+      `It's one of 28,906 NYC homes that may owe the new pied-à-terre tax 💸 See who else made the list 🗽`
+    );
   }
-  return parts.join(' ');
+  if (p.on_supplemental) {
+    return (
+      `🗽 ${addr}, ${where} is on NYC's pied-à-terre tax watchlist. ` +
+      `${value ? `The city says it's worth ${value}. ` : ''}` +
+      `${who}${portfolio}. Look up any address 👇`
+    );
+  }
+  return (
+    `🏙️ ${addr}, ${where}${value ? ` — valued at ${value} by the city` : ''}. ` +
+    `${who}${portfolio}. Not on the pied-à-terre tax list (this time). Check your block 👇`
+  );
 }
 
 export function taxClassLabel(taxClass: string): string {

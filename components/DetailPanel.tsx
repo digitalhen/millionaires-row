@@ -176,7 +176,7 @@ export default function DetailPanel({
               <ShareButton
                 path={`/?p=${encodeURIComponent(p.parid)}`}
                 title={addressLabel(p.address, p)}
-                text={shareSummary(p)}
+                text={shareSummary(p, owner?.property_count)}
               />
             </div>
 
