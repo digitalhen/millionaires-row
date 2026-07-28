@@ -41,17 +41,16 @@ export const dynamic = 'force-dynamic';
 const TITLE = 'Leaderboards';
 const DESCRIPTION =
   'The largest portfolios and the highest DOF valuations on the New York City ' +
-  '2027 supplemental property roll: the most expensive homes that may be ' +
-  'subject to the non-primary-residence surcharge, the owners holding the ' +
-  'most parcels, the owners holding the most value, and the most expensive ' +
-  'parcels in the city.';
+  '2027 supplemental property roll: the owners holding the most parcels, the ' +
+  'owners holding the most value, the most expensive parcels in the city, and ' +
+  'the most expensive parcels that may be subject to the non-primary-residence ' +
+  'surcharge.';
 
-// The may-be-subject homes lead by default: they are the story the site tells.
 const SECTIONS = [
-  { id: 'may-be-subject', label: 'May-be-subject homes' },
   { id: 'owners-by-roll', label: 'Owners by count' },
   { id: 'owners-by-value', label: 'Owners by value' },
   { id: 'most-expensive', label: 'Most expensive' },
+  { id: 'may-be-subject', label: 'May be subject' },
 ] as const;
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -186,18 +185,6 @@ export default async function LeaderboardsPage() {
         </nav>
       </div>
 
-      <section className="section" id="may-be-subject">
-        <h2>
-          Top may-be-subject homes — top {num(LEADERBOARD_ELIGIBLE_LIMIT)}
-        </h2>
-        <RankedPropertyTable rows={topEligible} />
-        <p className="crumb" style={{ marginTop: 10, textTransform: 'none', letterSpacing: 0 }}>
-          Restricted to the <span style={{ color: 'var(--red)' }}>■</span> parcels matching
-          DOF&rsquo;s published criteria. Primary-residence use generally exempts
-          an owner, so these may be subject to the surcharge — not liable for it.
-        </p>
-      </section>
-
       <section className="section" id="owners-by-roll">
         <h2>
           Top owners by properties on the roll — {num(byRollCount.length)} of{' '}
@@ -231,6 +218,19 @@ export default async function LeaderboardsPage() {
           Every parcel in the city, ranked by DOF full market value — including
           the office towers and commercial buildings the surcharge was never
           aimed at.
+        </p>
+      </section>
+
+      <section className="section" id="may-be-subject">
+        <h2>
+          Most expensive properties that may be subject — top{' '}
+          {num(LEADERBOARD_ELIGIBLE_LIMIT)}
+        </h2>
+        <RankedPropertyTable rows={topEligible} />
+        <p className="crumb" style={{ marginTop: 10, textTransform: 'none', letterSpacing: 0 }}>
+          Restricted to the <span style={{ color: 'var(--red)' }}>■</span> parcels matching
+          DOF&rsquo;s published criteria. Primary-residence use generally exempts
+          an owner, so these may be subject to the surcharge — not liable for it.
         </p>
       </section>
 
