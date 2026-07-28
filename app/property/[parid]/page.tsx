@@ -8,6 +8,7 @@ import JsonLd from '@/components/JsonLd';
 import MiniMap from '@/components/MiniMap';
 import OwnerCounts from '@/components/OwnerCounts';
 import PropertyTable from '@/components/PropertyTable';
+import ShareButton from '@/components/ShareButton';
 import TopBar from '@/components/TopBar';
 import { getProperty, getPropertyCard } from '@/lib/queries';
 import {
@@ -188,7 +189,10 @@ export default async function PropertyPage({ params }: Params) {
       <TopBar crumb="Property" />
 
       <div className="detail-head">
-        <h1>{label}</h1>
+        <div className="detail-title-row">
+          <h1>{label}</h1>
+          <ShareButton path={`/property/${encodeURIComponent(p.parid)}`} title={label} />
+        </div>
         {/* Borough and ZIP double as links up to their aggregate pages. The
             ZIP only links when it is a real NYC ZIP — the roll also carries
             placeholders like '0' and the odd ZIP+4 string, which have no page. */}

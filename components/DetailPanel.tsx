@@ -15,6 +15,7 @@ import {
 import BuildingUnits from './BuildingUnits';
 import EligibleBadge, { NotOnRollNote } from './EligibleBadge';
 import OwnerCounts from './OwnerCounts';
+import ShareButton from './ShareButton';
 
 /**
  * Units listed in the sheet before it falls back to "full list →". On a phone
@@ -167,9 +168,15 @@ export default function DetailPanel({
               </div>
             </dl>
 
-            <Link href={`/property/${encodeURIComponent(p.parid)}`} className="badge panel-full">
-              Full details →
-            </Link>
+            <div className="panel-actions">
+              <Link href={`/property/${encodeURIComponent(p.parid)}`} className="badge panel-full">
+                Full details →
+              </Link>
+              <ShareButton
+                path={`/property/${encodeURIComponent(p.parid)}`}
+                title={addressLabel(p.address, p)}
+              />
+            </div>
 
             {/* Last in the sheet on purpose: on a phone the panel is 45dvh, and
                 the value, the owner and the way out must all be reachable

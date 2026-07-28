@@ -27,6 +27,14 @@ export function SiteNav() {
           {boroName(boro)}
         </Link>
       ))}
+      <a
+        href="https://buymeacoffee.com/digitalhen"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="coffee-link"
+      >
+        ☕ Buy me a coffee
+      </a>
     </nav>
   );
 }

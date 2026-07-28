@@ -1002,6 +1002,60 @@ table.ledger.ledger--tight td {
   font-size: 11px;
 }
 
+/* Full-details + share, side by side in the panel. */
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.panel-actions .panel-full {
+  margin-top: 20px;
+}
+
+/* <button> resets so the share control renders exactly like an <a class="badge">. */
+button.share-btn {
+  appearance: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid var(--fg);
+  padding: 8px 12px;
+  margin-top: 20px;
+  cursor: pointer;
+  line-height: 1.6;
+}
+button.share-btn:hover {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+/* On the property page the share button sits beside the h1, on its baseline. */
+.detail-title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.detail-title-row button.share-btn {
+  margin-top: 0;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.coffee-link {
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  button.share-btn {
+    min-height: 44px;
+  }
+}
+
 /* ---------- maplibre control skin ---------- */
 
 .maplibregl-ctrl-group {
