@@ -121,9 +121,44 @@ export function addressLabel(
 }
 
 /**
+ * Building-scale roll records: one row standing for a whole house rather than
+ * for somewhere anyone lives.
+ *
+ *   R9 — a co-op *within* a condominium: the co-op corporation's residential
+ *        portion filed as a single lot, with no `-U` children of its own.
+ *   R0 — a condominium's billing lot, the administrative row that carries the
+ *        building's residential portion.
+ *
+ * Both are owned by a corporation and carry a whole-building FMV, so every
+ * surface that prints a value has to say so — presented bare, CHURCHILL OWNERS
+ * CORP's $185m reads as the asking price of an apartment. This is a *class*
+ * test rather than the "does it have `-U` children" test behind
+ * `BuildingBlock.isBuildingRecord`, which these records fail precisely because
+ * their units are not on the roll separately.
+ */
+const BUILDING_SCALE_CLASSES = new Set(['R9', 'R0']);
+
+export function isBuildingScaleRecord(code: string | null | undefined): boolean {
+  if (!code) return false;
+  return BUILDING_SCALE_CLASSES.has(code.trim().toUpperCase());
+}
+
+/** One-liner shown next to the headline of a building-scale record. */
+export const BUILDING_SCALE_NOTE =
+  "This record covers a whole building's residential portion, not an individual home.";
+
+/** Caption fragment for a building-scale figure ("DOF estimate · …"). */
+export const BUILDING_SCALE_CAPTION = 'entire building/co-op';
+
+/**
  * Share text for a property — rides along with the link in the native share
  * sheet and the clipboard copy. Tabloid energy, public-record facts: values
  * are always attributed to the city and the tax is always "may", never "owes".
+ *
+ * No count of the eligible tier appears here on purpose. It used to ("one of
+ * 28,906 NYC homes…") and went stale the first time the eligibility rules were
+ * re-run; the sentence carries the same weight without a number that has to be
+ * kept in sync with the database.
  */
 export function shareSummary(
   p: {
@@ -135,6 +170,7 @@ export function shareSummary(
     owner: string | null;
     eligible: boolean;
     on_supplemental: boolean;
+    bldg_class?: string | null;
   },
   ownerPropertyCount?: number | null,
 ): string {
@@ -146,23 +182,40 @@ export function shareSummary(
     ownerPropertyCount && ownerPropertyCount > 1
       ? ` — and that's just 1 of their ${num(ownerPropertyCount)} NYC properties 🧾`
       : '';
+  // A whole-building record: never let the figure or the tax read as one home's.
+  const whole = isBuildingScaleRecord(p.bldg_class);
 
   if (p.eligible) {
+    const valued = whole
+      ? `the city pegs the whole building at ${value ?? 'a mystery number'}`
+      : `the city pegs it at ${value ?? 'a mystery number'}`;
+    const tax = whole
+      ? "The building may owe NYC's new pied-à-terre tax 💸"
+      : "It might owe NYC's new pied-à-terre tax 💸";
     return (
-      `👀 ${addr}, ${where} — the city pegs it at ${value ?? 'a mystery number'}. ` +
+      `👀 ${addr}, ${where} — ${valued}. ` +
       `${who}${portfolio}. ` +
-      `It's one of 28,906 NYC homes that may owe the new pied-à-terre tax 💸 See who else made the list 🗽`
+      `${tax} See who else made the list 🗽`
     );
   }
   if (p.on_supplemental) {
+    const valued = value
+      ? whole
+        ? `The city values the whole building at ${value}. `
+        : `The city says it's worth ${value}. `
+      : '';
     return (
       `🗽 ${addr}, ${where} is on NYC's pied-à-terre tax watchlist. ` +
-      `${value ? `The city says it's worth ${value}. ` : ''}` +
-      `${who}${portfolio}. Look up any address 👇`
+      `${valued}${who}${portfolio}. Look up any address 👇`
     );
   }
+  const valued = value
+    ? whole
+      ? ` — the whole building valued at ${value} by the city`
+      : ` — valued at ${value} by the city`
+    : '';
   return (
-    `🏙️ ${addr}, ${where}${value ? ` — valued at ${value} by the city` : ''}. ` +
+    `🏙️ ${addr}, ${where}${valued}. ` +
     `${who}${portfolio}. Not on the pied-à-terre tax list (this time). Check your block 👇`
   );
 }
@@ -257,7 +310,8 @@ const BUILDING_CLASSES: Record<string, string> = {
   O4: 'Office — tower type',
   P2: 'Lodge room',
   Q1: 'Park / playground',
-  R0: 'Condominium billing lot',
+  // R0/R9 are whole-building rows, not dwellings — see isBuildingScaleRecord().
+  R0: 'Condominium billing lot — whole building, not a unit',
   R1: 'Condo — residential unit, 2-10 unit building',
   R2: 'Condo — residential unit, walk-up',
   R3: 'Condo — residential unit, 1-3 stories',
@@ -266,7 +320,7 @@ const BUILDING_CLASSES: Record<string, string> = {
   R6: 'Condo — residential unit in 1-3 family building',
   R7: 'Condo — commercial unit in 1-3 family building',
   R8: 'Condo — commercial unit in 2-10 unit building',
-  R9: 'Condo — co-op within a condominium',
+  R9: 'Co-op within a condominium — whole building, not a unit',
   RA: 'Condo — cultural / medical / educational',
   RB: 'Condo — office space',
   RG: 'Condo — indoor parking',

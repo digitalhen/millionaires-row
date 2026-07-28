@@ -13,11 +13,17 @@ export const SITE_NAME = "Millionaires' Row";
 export const SITE_TAGLINE =
   "NYC's 2027 pied-à-terre tax roll, searchable and mapped";
 
+/**
+ * The default social/meta description. Deliberately count-agnostic: it used to
+ * name the tiers by their figures, and the figures move every time the roll is
+ * reloaded or the eligibility rules are re-run. "Nearly a million" survives
+ * that; "959,710" did not.
+ */
 export const SITE_DESCRIPTION =
-  "Search and map every property on the New York City Department of Finance's " +
-  '2027 supplemental property roll — the parcels that may be subject to the ' +
-  'non-primary-residence surcharge. Owner, DOF full market value and building ' +
-  'class for each parcel.';
+  'Search and map every property in New York City — including the nearly one ' +
+  "million on the Department of Finance's 2027 supplemental roll and the " +
+  'parcels that may be subject to the non-primary-residence (pied-à-terre) ' +
+  'surcharge. Owner, DOF full market value and building class for each parcel.';
 
 /** Origin without a trailing slash. */
 export const ORIGIN = SITE_URL.replace(/\/+$/, '');

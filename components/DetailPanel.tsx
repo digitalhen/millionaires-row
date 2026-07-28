@@ -4,10 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { PropertyResponse } from '@/lib/types';
 import {
+  BUILDING_SCALE_CAPTION,
+  BUILDING_SCALE_NOTE,
   addressLabel,
   boroName,
   buildingClassLabel,
   formatBbl,
+  isBuildingScaleRecord,
   money,
   num,
   shareSummary,
@@ -68,6 +71,8 @@ export default function DetailPanel({
   const owner = data?.owner ?? null;
   const building = data?.building ?? null;
   const bldg = p ? buildingClassLabel(p.bldg_class) : null;
+  /** R9/R0: the row is a whole house, whatever its `-U` children look like. */
+  const buildingScale = p ? isBuildingScaleRecord(p.bldg_class) : false;
 
   return (
     <aside
@@ -117,6 +122,17 @@ export default function DetailPanel({
               </p>
             )}
 
+            {/* R9/R0 rows are a corporation's whole building — said before the
+                figure below, which is otherwise read as one apartment's. */}
+            {buildingScale && (
+              <p
+                className="crumb"
+                style={{ margin: '10px 0 0', textTransform: 'none' }}
+              >
+                {BUILDING_SCALE_NOTE}
+              </p>
+            )}
+
             <div className="panel-fmv-block">
               {/* Named as an aggregate right here, not only in the building
                   section below: the co-op building record's figure is the whole
@@ -127,7 +143,10 @@ export default function DetailPanel({
                   : 'Full market value'}
               </span>
               <div className="panel-fmv">{money(p.fmv)}</div>
-              <span className="crumb">DOF estimate · tax year {p.tax_year}</span>
+              <span className="crumb">
+                DOF estimate{buildingScale ? ` · ${BUILDING_SCALE_CAPTION}` : ''} · tax
+                year {p.tax_year}
+              </span>
             </div>
 
             <dl className="panel-rows">

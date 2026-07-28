@@ -21,11 +21,14 @@ import {
   zipPath,
 } from '@/lib/seo';
 import {
+  BUILDING_SCALE_CAPTION,
+  BUILDING_SCALE_NOTE,
   addressLabel,
   boroName,
   boroSlug,
   buildingClassLabel,
   formatBbl,
+  isBuildingScaleRecord,
   isNycZip,
   money,
   num,
@@ -105,6 +108,8 @@ export default async function PropertyPage({ params }: Params) {
   const { property: p, owner, otherProperties, building } = data;
   const label = addressLabel(p.address, p);
   const bldgLabel = buildingClassLabel(p.bldg_class);
+  /** R9/R0: the row is a whole house, whatever its `-U` children look like. */
+  const buildingScale = isBuildingScaleRecord(p.bldg_class);
   const hasCoords = p.longitude != null && p.latitude != null;
   const houseRange =
     p.housenum_hi && p.housenum_hi !== p.housenum_lo
@@ -228,6 +233,13 @@ export default async function PropertyPage({ params }: Params) {
             <NotOnRollNote />
           )}
         </p>
+        {/* R9/R0 rows are a corporation's whole building. Said once, next to
+            the address, before any reader gets to the eight-figure value. */}
+        {buildingScale && (
+          <p className="crumb" style={{ marginTop: 10, textTransform: 'none' }}>
+            {BUILDING_SCALE_NOTE}
+          </p>
+        )}
       </div>
 
       <div className="fmv-block">
@@ -243,7 +255,8 @@ export default async function PropertyPage({ params }: Params) {
           <div className="fmv">{money(p.fmv)}</div>
         </div>
         <span className="crumb">
-          DOF estimate · tax year {p.tax_year} · roll {p.source_file}
+          DOF estimate{buildingScale ? ` · ${BUILDING_SCALE_CAPTION}` : ''} · tax year{' '}
+          {p.tax_year} · roll {p.source_file}
         </span>
       </div>
 

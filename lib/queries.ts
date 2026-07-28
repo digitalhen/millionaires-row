@@ -439,9 +439,12 @@ export async function getTopOwnerIds(limit = SITEMAP_OWNER_LIMIT): Promise<strin
   return rows.map((r) => r.owner_norm);
 }
 
-/** Headline figures for the default social card. Deliberately narrower (and
- *  cheaper) than getStats(): three aggregates over `properties`, no join. */
+/** Headline figures for the default social card — one figure per tier of the
+ *  three-tier story. Deliberately narrower (and cheaper) than getStats(): four
+ *  aggregates in a single pass over `properties`, no join. */
 export type HeadlineStats = {
+  /** Every parcel in the city, on the roll or not. */
+  allCount: number;
   rollCount: number;
   rollFmv: number;
   eligibleCount: number;
@@ -452,17 +455,20 @@ export function getHeadlineStats(): Promise<HeadlineStats | null> {
     const flags = await schemaFlags();
     const supp = onSupplementalSql(flags);
     const row = await queryOne<{
+      all_count: number;
       roll_count: number;
       roll_fmv: number | null;
       eligible_count: number;
     }>(
-      `SELECT count(*) FILTER (WHERE ${supp})::int AS roll_count,
+      `SELECT count(*)::int AS all_count,
+              count(*) FILTER (WHERE ${supp})::int AS roll_count,
               COALESCE(sum(p.fmv) FILTER (WHERE ${supp}), 0) AS roll_fmv,
               count(*) FILTER (WHERE p.eligible)::int AS eligible_count
          FROM properties p`,
     );
     if (!row || !row.roll_count) return null;
     return {
+      allCount: row.all_count,
       rollCount: row.roll_count,
       rollFmv: row.roll_fmv ?? 0,
       eligibleCount: row.eligible_count,
