@@ -88,8 +88,10 @@ On **each** Dokploy instance:
    table).
 
 To refresh data later: rebuild the dump locally (`scripts/` pipeline), commit
-it, push, then on each instance drop the `pgdata` volume (or
-`DROP TABLE properties, owners` and re-run the seed service) and redeploy.
+it, push, redeploy. The seed service checksums the committed dump against the
+one the database was last seeded from (`seed_version` table) and re-restores
+automatically when they differ — atomically, via `--clean --single-transaction`,
+so the app serves the old roll until the swap commits.
 
 ### Health check
 

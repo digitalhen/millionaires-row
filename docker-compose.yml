@@ -43,7 +43,14 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # One-shot: restores the seed dump if the database is empty, then exits.
+  # One-shot: restores the seed dump whenever the committed dump differs from
+  # what the database was last seeded with, then exits. The checksum of the
+  # restored dump lives in the database itself (`seed_version`), so pushing a
+  # new data/seed/mrow.dump and redeploying is the whole refresh procedure —
+  # no volume drops, no manual DROP TABLE. `--clean --if-exists
+  # --single-transaction` swaps the data atomically: readers see the old roll
+  # until the commit, never a half-restored one. `seed_version` is created
+  # here rather than shipped in the dump, so `--clean` never drops it.
   seed:
     image: postgres:16
     depends_on:
@@ -57,11 +64,18 @@ services:
     command:
       - |
         set -e
-        if psql -h postgres -U mrow -d mrow -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='properties'" | grep -q 1; then
-          echo "seed: database already initialized, skipping"
+        WANT=$$(sha256sum /seed/mrow.dump | cut -d' ' -f1)
+        HAVE=$$(psql -h postgres -U mrow -d mrow -tAc "SELECT checksum FROM seed_version" 2>/dev/null || true)
+        if [ "$$WANT" = "$$HAVE" ]; then
+          echo "seed: database already at $$WANT, skipping"
         else
-          echo "seed: restoring /seed/mrow.dump"
-          pg_restore -h postgres -U mrow -d mrow --no-owner --no-acl /seed/mrow.dump
+          echo "seed: restoring /seed/mrow.dump ($$WANT, was $${HAVE:-empty})"
+          pg_restore -h postgres -U mrow -d mrow \
+            --clean --if-exists --single-transaction --no-owner --no-acl \
+            /seed/mrow.dump
+          psql -h postgres -U mrow -d mrow -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE IF NOT EXISTS seed_version (checksum text NOT NULL);
+             TRUNCATE seed_version; INSERT INTO seed_version VALUES ('$$WANT');"
           echo "seed: done"
         fi
 
