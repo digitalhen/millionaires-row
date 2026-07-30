@@ -2,9 +2,10 @@
 # Build map_dots: one map dot per building/parcel group.
 #
 # Stacked records collapse into a single dot:
-#   - condo units (condo_number set, lot >= 1001) group by
-#     (boro, block, condo_number, coords) — every unit shares the building's
-#     billing-lot coordinate, so 1 Irving Place's 651 units become one dot;
+#   - condo rows (condo_number set, unit lot or R-class) group by
+#     (boro, block, condo_number) — the whole development is one dot at its
+#     modal coordinate, so 1 Irving Place's 651 units become one dot and a
+#     stray-geocoded billing lot cannot spawn a phantom twin;
 #   - co-op '-U' unit rows group with their parent building record by bbl;
 #   - everything else is its own dot.
 #
@@ -27,8 +28,27 @@ SET max_parallel_workers_per_gather = 0;
 
 DROP TABLE IF EXISTS map_dots;
 CREATE TABLE map_dots AS
-WITH members AS (
+WITH
+-- One condominium = one dot. A condo's rows are geocoded inconsistently —
+-- units on one point, the R0 billing lot a few metres off (403 Greenwich's
+-- sat 8m away, spawning a phantom second dot for the same building), 5,951
+-- condos split across two or more coordinates. The app's own "in this
+-- building" block already treats the whole condo as one building, so the map
+-- says the same: every member maps to the development's modal coordinate.
+condo_modal AS (
+  SELECT boro, block, condo_number, longitude AS mlng, latitude AS mlat
+    FROM (SELECT p.boro, p.block, p.condo_number, p.longitude, p.latitude,
+                 row_number() OVER (PARTITION BY p.boro, p.block, p.condo_number
+                                    ORDER BY count(*) DESC, p.longitude, p.latitude) AS rk
+            FROM properties p
+           WHERE p.condo_number IS NOT NULL AND p.longitude IS NOT NULL
+           GROUP BY 1, 2, 3, 4, 5) g
+   WHERE rk = 1
+),
+members AS (
   SELECT p.*,
+    COALESCE(m.mlng, p.longitude) AS glng,
+    COALESCE(m.mlat, p.latitude) AS glat,
     p.parid NOT LIKE '%-U%'
       AND EXISTS (SELECT 1 FROM properties c
                    WHERE c.bbl = p.bbl AND c.parid LIKE p.parid || '-U%')
@@ -50,8 +70,7 @@ WITH members AS (
       -- An R-class row with a condo number is a condo unit whatever its lot.
       WHEN p.condo_number IS NOT NULL
            AND (p.lot >= 1001 OR upper(trim(COALESCE(p.bldg_class, ''))) LIKE 'R%')
-        THEN 'C:' || p.boro || ':' || p.block || ':' || p.condo_number || ':'
-             || p.longitude || ':' || p.latitude
+        THEN 'C:' || p.boro || ':' || p.block || ':' || p.condo_number
       WHEN p.parid LIKE '%-U%'
         OR EXISTS (SELECT 1 FROM properties c
                     WHERE c.bbl = p.bbl AND c.parid LIKE p.parid || '-U%')
@@ -59,6 +78,8 @@ WITH members AS (
       ELSE 'P:' || p.parid
     END AS gid
   FROM properties p
+  LEFT JOIN condo_modal m
+    ON m.boro = p.boro AND m.block = p.block AND m.condo_number = p.condo_number
   WHERE p.longitude IS NOT NULL
 )
 SELECT
@@ -75,10 +96,10 @@ SELECT
   (array_agg(parid ORDER BY is_parent_of_flagged DESC, eligible DESC,
              is_coop_parent DESC, fmv DESC NULLS LAST, parid))[1]
     AS parid,
-  (array_agg(longitude ORDER BY is_parent_of_flagged DESC, eligible DESC,
+  (array_agg(glng ORDER BY is_parent_of_flagged DESC, eligible DESC,
              is_coop_parent DESC, fmv DESC NULLS LAST, parid))[1]
     AS longitude,
-  (array_agg(latitude ORDER BY is_parent_of_flagged DESC, eligible DESC,
+  (array_agg(glat ORDER BY is_parent_of_flagged DESC, eligible DESC,
              is_coop_parent DESC, fmv DESC NULLS LAST, parid))[1]
     AS latitude,
   CASE WHEN bool_or(eligible) THEN 2
@@ -104,31 +125,12 @@ SELECT
 FROM members
 GROUP BY gid;
 
--- Dot displacement. Distinct buildings are sometimes geocoded to the
--- IDENTICAL coordinate (2,600+ collisions; one Battery Park City pixel held
--- 11 red towers), and perfectly stacked dots leave every building but the
--- strongest unreachable by hover or click. The stacked coordinate is already
--- wrong for all but one of them, so honesty favours spreading: the strongest
--- dot (tier, then value) keeps the true point and the rest fan out on a
--- deterministic sunflower spiral — ~9m for the first, ~40m for the 22nd —
--- far below the distance between the real buildings. Longitude steps are
--- scaled by cos(lat) so the spiral is round on the ground, and the offsets
--- survive the API's 1e-5-degree coordinate rounding.
-WITH ranked AS (
-  SELECT gid,
-         latitude AS lat0,
-         row_number() OVER (PARTITION BY longitude, latitude
-                            ORDER BY tier DESC, fmv DESC NULLS LAST, gid) - 1 AS k
-    FROM map_dots
-)
-UPDATE map_dots d
-   SET longitude = d.longitude
-                   + 0.00008 * sqrt(r.k) * cos(r.k * 2.399963) / cos(radians(r.lat0)),
-       latitude  = d.latitude
-                   + 0.00008 * sqrt(r.k) * sin(r.k * 2.399963)
-  FROM ranked r
- WHERE r.gid = d.gid AND r.k > 0;
-
+-- NOTE on colliding coordinates: distinct buildings are sometimes geocoded to
+-- the IDENTICAL point (2,600+ collisions; one Battery Park City pixel holds
+-- 11 red towers). The dots deliberately stay at their true shared coordinate
+-- — displacing them read as dots on the wrong buildings. The client makes the
+-- stack navigable instead: hover names the strongest dot and counts the rest,
+-- click opens the strongest and lists every building at the point.
 ALTER TABLE map_dots ADD PRIMARY KEY (gid);
 CREATE INDEX map_dots_geo ON map_dots (longitude, latitude);
 CREATE INDEX map_dots_fmv ON map_dots (fmv DESC NULLS LAST);

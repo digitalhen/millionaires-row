@@ -12,7 +12,7 @@ export const BOROUGHS_GEOJSON = withBaseVersioned('/geo/nyc-boroughs.geojson');
  * NYC parcels. 4 = one dot per building rather than per roll record, carrying a
  * member count as a sixth element, sampled by hashtext rather than md5.
  */
-export const OVERVIEW_VERSION = 7;
+export const OVERVIEW_VERSION = 8;
 
 /** NYC, roughly. Used as the initial camera and as a clamp on panning. */
 export const NYC_CENTER: [number, number] = [-73.95, 40.705];

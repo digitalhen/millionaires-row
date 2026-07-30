@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import DetailPanel from './DetailPanel';
-import MapExplorer from './MapExplorer';
+import MapExplorer, { type MapStackEntry } from './MapExplorer';
 import SearchBox from './SearchBox';
 import { withBase } from '@/lib/basePath';
 import { moneyCompact, num } from '@/lib/format';
@@ -20,6 +20,8 @@ export default function HomeView({ stats }: { stats: StatsResponse | null }) {
   const [data, setData] = useState<PropertyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  /** Buildings sharing the clicked map point (set only by map clicks). */
+  const [stack, setStack] = useState<MapStackEntry[] | null>(null);
 
   // Read the initial selection and follow Back/Forward.
   useEffect(() => {
@@ -32,14 +34,23 @@ export default function HomeView({ stats }: { stats: StatsResponse | null }) {
     return () => window.removeEventListener('popstate', read);
   }, []);
 
-  const select = useCallback((next: string | null) => {
+  const select = useCallback((next: string | null, nextStack?: MapStackEntry[]) => {
     setParid(next);
+    // A click on a stacked point carries the other buildings; any other way
+    // in (search, deep link, unit navigation) clears them.
+    setStack(nextStack ?? null);
     const url = new URL(window.location.href);
     if (next) url.searchParams.set('p', next);
     else url.searchParams.delete('p');
     // Shallow update: no navigation, no refetch of the page itself.
     window.history.pushState({}, '', url);
   }, []);
+
+  /** Swap the panel to a sibling of the stack without dropping the stack. */
+  const selectWithinStack = useCallback(
+    (next: string) => select(next, stack ?? undefined),
+    [select, stack],
+  );
 
   const close = useCallback(() => select(null), [select]);
 
@@ -131,8 +142,10 @@ export default function HomeView({ stats }: { stats: StatsResponse | null }) {
         data={data}
         loading={loading}
         error={error}
+        stack={stack}
         onClose={close}
         onSelect={select}
+        onSelectStacked={selectWithinStack}
       />
     </main>
   );

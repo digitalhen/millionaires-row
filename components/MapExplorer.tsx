@@ -50,6 +50,8 @@ type Tooltip = {
   eligible: number;
   /** the dot's fmv is a co-op building aggregate, not one home's value */
   aggregate: boolean;
+  /** OTHER buildings geocoded to this same point (0 almost everywhere) */
+  stacked: number;
   /** render to the left of the cursor when near the right edge */
   flip: boolean;
 };
@@ -77,27 +79,43 @@ function dotLabel(
   return property.address.slice(0, -suffix.length);
 }
 
+/** One building among several sharing a map point, strongest first. */
+export type MapStackEntry = {
+  parid: string;
+  fmv: number | null;
+  tier: number;
+  members: number;
+  eligible: number;
+};
+
 /**
- * The dot to honour when several overlap under the cursor. Distinct condo
- * developments on one block are sometimes geocoded to the *identical*
- * coordinate (block 485 stacks four), and MapLibre hands back every dot at the
- * pixel in arbitrary order — taking the first meant a red pixel could open a
- * white record ("83 Mercer is red, but nothing red when I click it"). Red
- * paints on top, so the pick must match: strongest tier, then biggest value.
+ * The dots under the cursor, strongest first. Distinct buildings are sometimes
+ * geocoded to the *identical* coordinate (block 485 stacks four; one Battery
+ * Park City point holds 11 red towers), and MapLibre hands back every dot at
+ * the pixel in arbitrary order — taking the first meant a red pixel could open
+ * a white record ("83 Mercer is red, but nothing red when I click it"). Red
+ * paints on top, so the order must match: strongest tier, then biggest value.
+ * The full ordered stack is what a click hands the panel, so every stacked
+ * building stays reachable without moving any dot off its true coordinate.
  */
-function pickFeature<
-  F extends { properties?: Record<string, unknown> | null } | undefined,
->(features: F[] | undefined): F | undefined {
-  if (!features?.length) return undefined;
-  const rank = (f: F) => [
-    Number(f?.properties?.e ?? -1),
-    Number(f?.properties?.v ?? -1),
-  ];
-  return [...features].sort((a, b) => {
-    const [ta, va] = rank(a);
-    const [tb, vb] = rank(b);
-    return tb - ta || vb - va;
-  })[0];
+function featureStack(
+  features: { properties?: Record<string, unknown> | null }[] | undefined,
+): MapStackEntry[] {
+  const seen = new Set<string>();
+  const entries: MapStackEntry[] = [];
+  for (const f of features ?? []) {
+    const parid = String(f.properties?.p ?? '');
+    if (!parid || seen.has(parid)) continue;
+    seen.add(parid);
+    entries.push({
+      parid,
+      fmv: f.properties?.v == null ? null : Number(f.properties.v),
+      tier: Number(f.properties?.e ?? 0) || 0,
+      members: Number(f.properties?.n ?? 1) || 1,
+      eligible: Number(f.properties?.c ?? 0) || 0,
+    });
+  }
+  return entries.sort((a, b) => b.tier - a.tier || (b.fmv ?? -1) - (a.fmv ?? -1));
 }
 
 export type MapFocus = { lng: number; lat: number; parid: string };
@@ -108,7 +126,8 @@ export default function MapExplorer({
 }: {
   /** Coordinates of the selected parcel, or null when nothing is selected. */
   focus: MapFocus | null;
-  onSelect: (parid: string) => void;
+  /** `stack` rides along when other buildings share the clicked point. */
+  onSelect: (parid: string, stack?: MapStackEntry[]) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -261,13 +280,12 @@ export default function MapExplorer({
         for (const layer of selectionLayers('sel')) map.addLayer(layer);
 
         map.on('mousemove', 'hit', (e: MapLayerMouseEvent) => {
-          const f = pickFeature(e.features);
-          if (!f) return;
-          const parid = String(f.properties?.p ?? '');
-          const fmv = f.properties?.v == null ? null : Number(f.properties.v);
-          const members = Number(f.properties?.n ?? 1) || 1;
-          const eligible = Number(f.properties?.c ?? 0) || 0;
-          const coords = (f.geometry as Point).coordinates as [number, number];
+          const stack = featureStack(e.features);
+          const f = stack[0];
+          const raw = (e.features ?? [])[0];
+          if (!f || !raw) return;
+          const { parid, fmv, members, eligible } = f;
+          const coords = (raw.geometry as Point).coordinates as [number, number];
           map!.getCanvas().style.cursor = 'pointer';
           const hovered: Feature = {
             type: 'Feature',
@@ -285,6 +303,7 @@ export default function MapExplorer({
             eligible,
             aggregate: known?.aggregate ?? false,
             address: known?.label ?? null,
+            stacked: stack.length - 1,
             flip: e.point.x > map!.getCanvas().clientWidth - 240,
           });
           if (!known) {
@@ -321,11 +340,12 @@ export default function MapExplorer({
         });
 
         // Fires for a touch tap as well as a mouse click: opens the details
-        // panel rather than navigating away from the map.
+        // panel rather than navigating away from the map. The whole ordered
+        // stack rides along so the panel can list every building at the point.
         map.on('click', 'hit', (e: MapLayerMouseEvent) => {
-          const f = pickFeature(e.features);
-          const parid = f?.properties?.p;
-          if (parid) onSelect(String(parid));
+          const stack = featureStack(e.features);
+          const top = stack[0];
+          if (top) onSelect(top.parid, stack.length > 1 ? stack : undefined);
         });
 
         setReady(true);
@@ -419,6 +439,13 @@ export default function MapExplorer({
                 : tooltip.eligible === tooltip.members
                   ? 'all units may be subject'
                   : `${num(tooltip.eligible)} of ${num(tooltip.members)} may be subject`}
+            </div>
+          )}
+          {/* Same geocoded point, different buildings — click lists them all. */}
+          {tooltip.stacked > 0 && (
+            <div className="t-stack">
+              +{num(tooltip.stacked)} more building{tooltip.stacked === 1 ? '' : 's'} at
+              this point
             </div>
           )}
         </div>

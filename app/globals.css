@@ -510,6 +510,36 @@ a.badge:hover {
   color: var(--red);
 }
 
+.map-tooltip .t-stack {
+  color: var(--grey-1);
+  font-style: italic;
+}
+
+/* Buildings sharing one geocoded point, listed in the details panel. */
+.panel-stack {
+  margin: 12px 0 0;
+}
+
+.panel-stack ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.stack-row {
+  padding: 2px 0;
+}
+
+.stack-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .map-foot {
   position: absolute;
   left: 0;

@@ -34,6 +34,13 @@ export default function BuildingUnits({
   onNavigate?: (parid: string) => void;
 }) {
   const { buildingRecord, isBuildingRecord, recordUnitCount, unitCount, units } = building;
+  // A condo number can span a row of attached houses (2103-2125 57th St is
+  // one condominium: twelve houses, apartments 1-3 in each). Labelled by
+  // apartment alone the table reads "1, 3, 1, 3…" at identical values — like
+  // duplicate rows. When the siblings span more than one street address, the
+  // rows carry their full address instead.
+  const multiAddress =
+    new Set(units.map(baseAddress).filter(Boolean)).size > 1;
   let shown = rowCap != null ? units.slice(0, rowCap) : units;
   // The viewed record must never fall off the capped list — its absence is
   // what made the section read as a different building's units.
@@ -75,7 +82,13 @@ export default function BuildingUnits({
         </p>
       ) : (
         <p className="bldg-line">
-          <span className="label">{isBuildingRecord ? 'This record' : 'Same building'}</span>
+          <span className="label">
+            {isBuildingRecord
+              ? 'This record'
+              : multiAddress
+                ? 'Same condominium'
+                : 'Same building'}
+          </span>
           <span className="crumb">
             {isBuildingRecord ? aggregate : `${num(unitCount)} units, each valued separately`}
           </span>
@@ -105,11 +118,11 @@ export default function BuildingUnits({
                     {u.eligible ? <EligibleMark /> : null}
                     {u.parid === currentParid ? (
                       <>
-                        <strong>{unitLabel(u)}</strong>
+                        <strong>{unitLabel(u, multiAddress)}</strong>
                         <span className="crumb"> · this record</span>
                       </>
                     ) : (
-                      link(u.parid, unitLabel(u))
+                      link(u.parid, unitLabel(u, multiAddress))
                     )}
                   </td>
                   <td className={`num${u.eligible ? ' num-eligible' : ''}`}>{money(u.fmv)}</td>
@@ -142,8 +155,20 @@ export default function BuildingUnits({
 /**
  * Apartment designation, falling back to the address: a condominium's billing
  * lot and its commercial spaces are siblings too and carry no apartment number.
+ * When the sibling set spans several street addresses, the full address (which
+ * carries the apartment clause) is the label — the bare apartment number would
+ * repeat across houses.
  */
-function unitLabel(u: PropertyListItem): string {
+function unitLabel(u: PropertyListItem, multiAddress = false): string {
   const apt = (u.aptno ?? '').trim();
-  return apt || addressLabel(u.address);
+  if (multiAddress || !apt) return addressLabel(u.address);
+  return apt;
+}
+
+/** The address with its apartment clause removed — the house, not the unit. */
+function baseAddress(u: PropertyListItem): string {
+  const a = (u.address ?? '').trim();
+  const apt = (u.aptno ?? '').trim();
+  const suffix = apt ? `, APT ${apt}` : '';
+  return suffix && a.endsWith(suffix) ? a.slice(0, -suffix.length) : a;
 }

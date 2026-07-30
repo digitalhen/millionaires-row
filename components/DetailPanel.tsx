@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import type { MapStackEntry } from './MapExplorer';
 import type { PropertyResponse } from '@/lib/types';
 import {
   BUILDING_SCALE_CAPTION,
@@ -18,9 +19,10 @@ import {
   unitCountPhrase,
 } from '@/lib/format';
 import BuildingUnits from './BuildingUnits';
-import EligibleBadge, { NotOnRollNote } from './EligibleBadge';
+import EligibleBadge, { EligibleMark, NotOnRollNote } from './EligibleBadge';
 import OwnerCounts from './OwnerCounts';
 import ShareButton from './ShareButton';
+import { withBase } from '@/lib/basePath';
 
 /**
  * Units listed in the sheet before it falls back to "full list →". On a phone
@@ -29,6 +31,73 @@ import ShareButton from './ShareButton';
  * this is, and the property page carries the rest.
  */
 const PANEL_UNIT_ROWS = 12;
+
+/** Address labels for stacked-building rows, cached for the session. */
+const stackAddrCache = new Map<string, string>();
+
+/**
+ * One building in the "N buildings at this map point" list. The stack entries
+ * arrive from the map with no address (dots carry only parids), so each row
+ * fetches its own — cached, and there are rarely more than a handful. The
+ * representative can be a unit; its apartment clause is dropped the same way
+ * the map tooltip drops it, because the row stands for the whole building.
+ */
+function StackRow({
+  entry,
+  active,
+  onPick,
+}: {
+  entry: MapStackEntry;
+  active: boolean;
+  onPick?: (parid: string) => void;
+}) {
+  const [addr, setAddr] = useState<string | null>(
+    stackAddrCache.get(entry.parid) ?? null,
+  );
+  useEffect(() => {
+    if (stackAddrCache.has(entry.parid)) {
+      setAddr(stackAddrCache.get(entry.parid) ?? null);
+      return;
+    }
+    let gone = false;
+    fetch(withBase(`/api/property/${encodeURIComponent(entry.parid)}`))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.property || gone) return;
+        let label = addressLabel(d.property.address, d.property);
+        const apt = (d.property.aptno ?? '').trim();
+        const suffix = apt ? `, APT ${apt}` : '';
+        if (entry.members > 1 && suffix && label.endsWith(suffix)) {
+          label = label.slice(0, -suffix.length);
+        }
+        stackAddrCache.set(entry.parid, label);
+        setAddr(label);
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [entry.parid, entry.members]);
+
+  const name = addr ?? entry.parid;
+  return (
+    <li className="stack-row">
+      {entry.tier === 2 ? <EligibleMark /> : null}
+      {active ? (
+        <strong>{name}</strong>
+      ) : (
+        <button type="button" className="stack-link" onClick={() => onPick?.(entry.parid)}>
+          {name}
+        </button>
+      )}
+      <span className="crumb">
+        {' '}
+        {entry.members > 1 ? `${num(entry.members)} units · ` : ''}
+        {money(entry.fmv)}
+      </span>
+    </li>
+  );
+}
 
 /**
  * Selected-property details. A right-hand side panel on desktop, a bottom sheet
@@ -40,16 +109,22 @@ export default function DetailPanel({
   data,
   loading,
   error,
+  stack,
   onClose,
   onSelect,
+  onSelectStacked,
 }: {
   parid: string | null;
   data: PropertyResponse | null;
   loading: boolean;
   error: boolean;
+  /** Other buildings geocoded to the clicked map point, strongest first. */
+  stack?: MapStackEntry[] | null;
   onClose: () => void;
   /** Swap the panel to another parcel without leaving the map. */
   onSelect?: (parid: string) => void;
+  /** Like onSelect, but keeps the stacked-buildings list in place. */
+  onSelectStacked?: (parid: string) => void;
 }) {
   const [dragY, setDragY] = useState(0);
   const startY = useRef<number | null>(null);
@@ -117,6 +192,28 @@ export default function DetailPanel({
               {p.zip_code ? ` · ${p.zip_code}` : ''} · BBL{' '}
               {formatBbl(p.boro, p.block, p.lot)}
             </p>
+
+            {/* Several buildings can be geocoded to one map point; the clicked
+                dot only opens the strongest. Listing the rest here is what
+                keeps them reachable — the dots stay on their true, shared
+                coordinate instead of fanning out to places they are not. */}
+            {stack && stack.length > 1 && (
+              <div className="panel-stack">
+                <span className="label">
+                  {num(stack.length)} buildings share this map point
+                </span>
+                <ul>
+                  {stack.map((s) => (
+                    <StackRow
+                      key={s.parid}
+                      entry={s}
+                      active={s.parid === p.parid}
+                      onPick={onSelectStacked}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {(p.eligible || !p.on_supplemental) && (
               <p style={{ margin: '10px 0 0' }}>
