@@ -121,26 +121,31 @@ export type OwnerResponse = {
 };
 
 /**
- * [lng, lat, fmv, parid, tier, members]
+ * [lng, lat, fmv, parid, tier, members, eligibleMembers]
  *
  * One mark on the map is one *building*, not one line of the roll: a 651-unit
  * condominium files 651 records at a single billing-lot coordinate, and drawing
  * all of them stacked one dot deep made a tower and a townhouse look identical.
  * `map_dots` collapses each stack (see scripts/build_map_dots.sh), so:
- *   • `parid` is a representative member — the co-op building record where
- *     there is one, else the highest-value unit. It is what a click opens, and
- *     the property page's "in this building" block lists the rest;
+ *   • `parid` is a representative member — the highest-value *eligible* member
+ *     when the dot is red (a red dot must open a record that is itself
+ *     flagged), else the co-op building record where there is one, else the
+ *     highest-value unit. It is what a click opens, and the property page's
+ *     "in this building" block lists the rest;
  *   • `fmv` is the group's aggregate value, not the representative's;
  *   • `tier` is the *strongest* tier any member reaches, so a single eligible
  *     apartment turns the whole building red;
  *   • `members` is how many roll records the dot stands for — 1 for an ordinary
- *     parcel, and omitted by callers that only ever draw one (MiniMap).
+ *     parcel, and omitted by callers that only ever draw one (MiniMap);
+ *   • `eligibleMembers` is how many of them are flagged themselves — the
+ *     tooltip's "4 of 865 units", so a red tower never reads as the whole
+ *     building's valuation being flagged.
  *
  * tier 0 = any NYC property, 1 = on the supplemental roll, 2 = may be subject
  * to the surcharge.
  */
 export type MapTier = 0 | 1 | 2;
-export type MapPoint = [number, number, number | null, string, MapTier, number?];
+export type MapPoint = [number, number, number | null, string, MapTier, number?, number?];
 
 /**
  * The three tiers, counted. `allProperties >= supplementalCount >=

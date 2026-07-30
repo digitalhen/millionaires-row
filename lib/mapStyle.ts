@@ -12,7 +12,7 @@ export const BOROUGHS_GEOJSON = withBaseVersioned('/geo/nyc-boroughs.geojson');
  * NYC parcels. 4 = one dot per building rather than per roll record, carrying a
  * member count as a sixth element, sampled by hashtext rather than md5.
  */
-export const OVERVIEW_VERSION = 5;
+export const OVERVIEW_VERSION = 6;
 
 /** NYC, roughly. Used as the initial camera and as a clamp on panning. */
 export const NYC_CENTER: [number, number] = [-73.95, 40.705];
@@ -315,8 +315,9 @@ export type PointFeatureCollection = {
   features: {
     type: 'Feature';
     id?: number;
-    /** p = parid, v = FMV, e = tier, n = roll records behind the dot. */
-    properties: { p: string; v: number | null; e: MapTier; n: number };
+    /** p = parid, v = FMV, e = tier, n = roll records behind the dot,
+     *  c = how many of them may be subject. */
+    properties: { p: string; v: number | null; e: MapTier; n: number; c: number };
     geometry: { type: 'Point'; coordinates: [number, number] };
   }[];
 };
@@ -324,10 +325,18 @@ export type PointFeatureCollection = {
 export function pointsToGeoJSON(points: MapPoint[]): PointFeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: points.map(([lng, lat, fmv, parid, tier, members], i) => ({
+    features: points.map(([lng, lat, fmv, parid, tier, members, eligible], i) => ({
       type: 'Feature' as const,
       id: i,
-      properties: { p: parid, v: fmv, e: tier, n: members ?? 1 },
+      // Callers that draw a single parcel (MiniMap) pass no counts; a lone
+      // red dot is its own one eligible record.
+      properties: {
+        p: parid,
+        v: fmv,
+        e: tier,
+        n: members ?? 1,
+        c: eligible ?? (tier === 2 ? 1 : 0),
+      },
       geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] },
     })),
   };

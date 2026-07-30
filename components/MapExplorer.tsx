@@ -46,6 +46,8 @@ type Tooltip = {
   address: string | null;
   /** roll records behind the dot; > 1 means a consolidated building */
   members: number;
+  /** how many of those records may be subject to the surcharge */
+  eligible: number;
   /** render to the left of the cursor when near the right edge */
   flip: boolean;
 };
@@ -239,6 +241,7 @@ export default function MapExplorer({
           const parid = String(f.properties?.p ?? '');
           const fmv = f.properties?.v == null ? null : Number(f.properties.v);
           const members = Number(f.properties?.n ?? 1) || 1;
+          const eligible = Number(f.properties?.c ?? 0) || 0;
           const coords = (f.geometry as Point).coordinates as [number, number];
           map!.getCanvas().style.cursor = 'pointer';
           const hovered: Feature = {
@@ -253,6 +256,7 @@ export default function MapExplorer({
             parid,
             fmv,
             members,
+            eligible,
             address: addressCache.get(parid) ?? null,
             flip: e.point.x > map!.getCanvas().clientWidth - 240,
           });
@@ -359,12 +363,22 @@ export default function MapExplorer({
         >
           <div>{tooltip.address ?? tooltip.parid}</div>
           {/* A consolidated dot's value is the whole building's, so the unit
-              count is what says the figure is not one apartment's. */}
+              count and the word "total" say the figure is not one apartment's. */}
           <div className="t-fmv">
             {tooltip.members > 1
-              ? `${num(tooltip.members)} units · ${money(tooltip.fmv)}`
+              ? `${num(tooltip.members)} units · ${money(tooltip.fmv)} total`
               : money(tooltip.fmv)}
           </div>
+          {/* Red means "contains at least one flagged home", not "this
+              valuation is flagged" — an 865-unit tower goes red for 4 units,
+              and without the count the total above reads as the taxed sum. */}
+          {tooltip.members > 1 && tooltip.eligible > 0 && (
+            <div className="t-eligible">
+              {tooltip.eligible === tooltip.members
+                ? 'all units may be subject'
+                : `${num(tooltip.eligible)} of ${num(tooltip.members)} may be subject`}
+            </div>
+          )}
         </div>
       )}
       <div className="map-foot">

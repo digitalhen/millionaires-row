@@ -504,6 +504,12 @@ a.badge:hover {
   color: var(--grey-1);
 }
 
+/* "4 of 865 may be subject" — the only red text in the tooltip, so the flag
+   reads as belonging to those units rather than to the total above it. */
+.map-tooltip .t-eligible {
+  color: var(--red);
+}
+
 .map-foot {
   position: absolute;
   left: 0;

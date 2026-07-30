@@ -483,6 +483,7 @@ type PointRow = {
   parid: string;
   tier: number;
   members: number | null;
+  eligible_members: number | null;
 };
 
 function toPoints(rows: PointRow[]): MapPoint[] {
@@ -493,6 +494,7 @@ function toPoints(rows: PointRow[]): MapPoint[] {
     r.parid,
     (r.tier ?? 1) as MapTier,
     r.members ?? 1,
+    r.eligible_members ?? 0,
   ]);
 }
 
@@ -531,12 +533,12 @@ export async function getOverviewPoints(limit = OVERVIEW_LIMIT): Promise<MapPoin
   const lim = Math.min(Math.max(1, Math.floor(limit) || OVERVIEW_LIMIT), POINTS_MAX_LIMIT);
   const rows = await query<PointRow>(
     `(SELECT d.longitude AS lng, d.latitude AS lat, d.fmv, d.parid,
-             d.tier, d.member_count AS members
+             d.tier, d.member_count AS members, d.eligible_count AS eligible_members
         FROM map_dots d
        WHERE d.tier = 2)
      UNION ALL
      (SELECT d.longitude AS lng, d.latitude AS lat, d.fmv, d.parid,
-             d.tier, d.member_count AS members
+             d.tier, d.member_count AS members, d.eligible_count AS eligible_members
         FROM map_dots d
        WHERE d.tier <> 2
        ORDER BY hashtext(d.parid)
@@ -567,7 +569,7 @@ export async function getPointsInBbox(
   const lim = Math.min(Math.max(1, Math.floor(limit) || 20_000), POINTS_MAX_LIMIT);
   const box = `d.longitude BETWEEN $1 AND $3 AND d.latitude BETWEEN $2 AND $4`;
   const cols = `d.longitude AS lng, d.latitude AS lat, d.fmv, d.parid,
-                d.tier, d.member_count AS members`;
+                d.tier, d.member_count AS members, d.eligible_count AS eligible_members`;
   const rows = await query<PointRow>(
     `(SELECT ${cols} FROM map_dots d WHERE ${box} AND d.tier = 2)
      UNION ALL
