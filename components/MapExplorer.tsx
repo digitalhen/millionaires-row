@@ -99,23 +99,41 @@ export type MapStackEntry = {
  * building stays reachable without moving any dot off its true coordinate.
  */
 function featureStack(
-  features: { properties?: Record<string, unknown> | null }[] | undefined,
+  features: {
+    properties?: Record<string, unknown> | null;
+    geometry?: unknown;
+  }[] | undefined,
 ): MapStackEntry[] {
   const seen = new Set<string>();
-  const entries: MapStackEntry[] = [];
+  const entries: (MapStackEntry & { lng: number; lat: number })[] = [];
   for (const f of features ?? []) {
     const parid = String(f.properties?.p ?? '');
     if (!parid || seen.has(parid)) continue;
     seen.add(parid);
+    const [lng, lat] = ((f.geometry as Point)?.coordinates ?? [NaN, NaN]) as [
+      number,
+      number,
+    ];
     entries.push({
       parid,
       fmv: f.properties?.v == null ? null : Number(f.properties.v),
       tier: Number(f.properties?.e ?? 0) || 0,
       members: Number(f.properties?.n ?? 1) || 1,
       eligible: Number(f.properties?.c ?? 0) || 0,
+      lng,
+      lat,
     });
   }
-  return entries.sort((a, b) => b.tier - a.tier || (b.fmv ?? -1) - (a.fmv ?? -1));
+  entries.sort((a, b) => b.tier - a.tier || (b.fmv ?? -1) - (a.fmv ?? -1));
+  const top = entries[0];
+  if (!top) return [];
+  // The hit area is pixels, so a zoomed-out tap sweeps up dots that are
+  // hundreds of metres apart — neighbours, not a stack. Only dots at the
+  // strongest dot's IDENTICAL coordinate are "at this point"; the rest are
+  // simply near the cursor and must not be reported as sharing the location.
+  return entries
+    .filter((e) => e.lng === top.lng && e.lat === top.lat)
+    .map(({ lng: _lng, lat: _lat, ...rest }) => rest);
 }
 
 export type MapFocus = { lng: number; lat: number; parid: string };
