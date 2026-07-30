@@ -225,12 +225,29 @@ export const COOP_UNIT_NOTE =
   'line on the roll.';
 
 /**
+ * A whole parcel whose roll address carries an apartment clause — "2214 64
+ * STREET, APT 59" is a D1 rental building assessed as one $5.5M parcel, and
+ * the title reads like a unit while the record is the house.
+ */
+export const WHOLE_PARCEL_APT_NOTE =
+  'Despite the apartment in its address, this record is the whole parcel: ' +
+  'the city assesses this building as one property. Only condo and co-op ' +
+  'apartments get roll records of their own — apartments in rental buildings ' +
+  'and family homes do not.';
+
+/**
  * The one note a record gets about what it *is* — whole building, co-op
- * aggregate, or co-op share. Both surfaces (property page, map panel) choose
- * through here so they can never disagree.
+ * aggregate, co-op share, mixed-use parcel, or a whole building wearing an
+ * apartment address. Both surfaces (property page, map panel) choose through
+ * here so they can never disagree.
  */
 export function recordScopeNote(
-  p: { bldg_class?: string | null; parid: string },
+  p: {
+    bldg_class?: string | null;
+    parid: string;
+    aptno?: string | null;
+    condo_number?: string | null;
+  },
   isBuildingRecord: boolean,
 ): string | null {
   if (isBuildingScaleRecord(p.bldg_class, p.parid)) {
@@ -240,7 +257,16 @@ export function recordScopeNote(
   // here is a co-op aggregate by construction.
   if (isBuildingRecord) return COOP_BUILDING_NOTE;
   if (isCoopUnitRecord(p.parid)) return COOP_UNIT_NOTE;
-  if (isMixedUseSClass(p.bldg_class)) return MIXED_USE_NOTE;
+  // A record that is not a condo unit (no condo number) yet carries an
+  // apartment in its address is a whole building wearing a unit's name.
+  const aptWholeParcel = (p.aptno ?? '').trim() !== '' && !p.condo_number;
+  if (isMixedUseSClass(p.bldg_class)) {
+    return (
+      MIXED_USE_NOTE +
+      (aptWholeParcel ? ' Individual apartments here are not separately valued.' : '')
+    );
+  }
+  if (aptWholeParcel) return WHOLE_PARCEL_APT_NOTE;
   return null;
 }
 

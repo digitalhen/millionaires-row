@@ -10,11 +10,16 @@
 #
 # Matching strategy, in order (each pass only touches still-unmatched rows):
 #   1. direct BBL match against PLUTO
-#   2. condo unit lots (>=1001): PLUTO condo *billing* lot 7501-7599 on the same
-#      boro+block
-#   3. condo unit lots (>=1001): centroid (mean lat/lng) of the boro+block
-#   4. any remaining unmatched lot: centroid of the boro+block
-#   5. still unmatched -> latitude/longitude stay NULL
+#   2. condo rows: their OWN condo's billing lot (7501-7599), found through the
+#      roll itself — the billing-lot row that shares the unit's condo_number.
+#      This must come before any block-level fallback: a block can hold many
+#      condominiums, and the old "first billing lot on the block" rule put
+#      every condo unit on the block at ONE building's coordinates (2356 61 St
+#      landed on 6113 23 Ave; SoHo blocks stacked four condos on one point).
+#   3. condo unit lots (>=1001): any PLUTO condo billing lot on the boro+block
+#   4. condo unit lots (>=1001): centroid (mean lat/lng) of the boro+block
+#   5. any remaining unmatched lot: centroid of the boro+block
+#   6. still unmatched -> latitude/longitude stay NULL
 #
 # Usage: scripts/geocode.sh    [FORCE_DOWNLOAD=1 to refetch PLUTO]
 set -euo pipefail
@@ -156,32 +161,51 @@ GROUP BY 1, 2;
 ALTER TABLE pluto_block ADD PRIMARY KEY (boro, block);
 ANALYZE pluto_block;
 
--- pass 2: condo unit lots -> PLUTO condo billing lot (7501-7599) on same boro+block
+-- pass 2: condo rows -> their OWN condo's billing lot, via the roll's
+-- condo_number. A block holds many condominiums; matching by block alone put
+-- whole developments on the wrong building. The unit's sibling billing-lot
+-- row (lot 7501-7599, same boro+block+condo_number) names the right BBL, and
+-- that BBL is in PLUTO under the building's true footprint.
+UPDATE properties p
+SET latitude = c.lat, longitude = c.lng
+FROM properties bill
+JOIN pluto_coords c ON c.bbl = bill.bbl
+WHERE p.latitude IS NULL
+  AND p.condo_number IS NOT NULL
+  AND bill.boro = p.boro AND bill.block = p.block
+  AND bill.condo_number = p.condo_number
+  AND bill.lot BETWEEN 7501 AND 7599
+  AND bill.parid <> p.parid;
+\echo '--- after pass 2 (own condo billing lot) ---'
+SELECT count(*) FILTER (WHERE latitude IS NOT NULL) AS with_coords, count(*) AS total FROM properties;
+
+-- pass 3: condo unit lots -> any PLUTO condo billing lot on same boro+block
+-- (fallback for condos whose own billing lot is missing from the roll/PLUTO)
 UPDATE properties p
 SET latitude = c.lat, longitude = c.lng
 FROM pluto_block b
 JOIN pluto_coords c ON c.bbl = b.billing_bbl
 WHERE p.latitude IS NULL AND p.lot >= 1001
   AND b.boro = p.boro AND b.block = p.block;
-\echo '--- after pass 2 (condo billing lot) ---'
+\echo '--- after pass 3 (block billing-lot fallback) ---'
 SELECT count(*) FILTER (WHERE latitude IS NOT NULL) AS with_coords, count(*) AS total FROM properties;
 
--- pass 3: condo unit lots -> boro+block centroid
+-- pass 4: condo unit lots -> boro+block centroid
 UPDATE properties p
 SET latitude = b.lat, longitude = b.lng
 FROM pluto_block b
 WHERE p.latitude IS NULL AND p.lot >= 1001
   AND b.boro = p.boro AND b.block = p.block;
-\echo '--- after pass 3 (condo block centroid) ---'
+\echo '--- after pass 4 (condo block centroid) ---'
 SELECT count(*) FILTER (WHERE latitude IS NOT NULL) AS with_coords, count(*) AS total FROM properties;
 
--- pass 4: any remaining lot -> boro+block centroid
+-- pass 5: any remaining lot -> boro+block centroid
 UPDATE properties p
 SET latitude = b.lat, longitude = b.lng
 FROM pluto_block b
 WHERE p.latitude IS NULL
   AND b.boro = p.boro AND b.block = p.block;
-\echo '--- after pass 4 (block centroid, all lots) ---'
+\echo '--- after pass 5 (block centroid, all lots) ---'
 SELECT count(*) FILTER (WHERE latitude IS NOT NULL) AS with_coords, count(*) AS total FROM properties;
 
 DROP TABLE pluto_block;
