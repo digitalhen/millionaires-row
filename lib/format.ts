@@ -138,8 +138,25 @@ export function addressLabel(
  */
 const BUILDING_SCALE_CLASSES = new Set(['R9', 'R0']);
 
-export function isBuildingScaleRecord(code: string | null | undefined): boolean {
+/**
+ * A co-op's `-U####` unit row — one apartment's share of the building. The
+ * suffix is the one part of `parid` that may be tested (the SQL layer keys on
+ * the same discriminator); reconstructing a BBL from it is still forbidden
+ * (see `formatBbl`).
+ */
+export function isCoopUnitRecord(parid: string | null | undefined): boolean {
+  return (parid ?? '').includes('-U');
+}
+
+export function isBuildingScaleRecord(
+  code: string | null | undefined,
+  parid?: string | null,
+): boolean {
   if (!code) return false;
+  // Co-op unit rows inherit the building's class, so the roll carries ~2,900
+  // R9-classed `-U` apartments. The class says "whole building"; the row is
+  // one flat, so the class test alone misreports every one of them.
+  if (isCoopUnitRecord(parid)) return false;
   return BUILDING_SCALE_CLASSES.has(code.trim().toUpperCase());
 }
 
@@ -149,19 +166,65 @@ export const BUILDING_SCALE_NOTE =
 
 /**
  * Explicit per-class explanation for building-scale records. R9 is the co-op
- * case and gets the full "co-ops don't work like that" wording: apartments in
- * a co-op are not separately assessed, so there are no per-apartment records
- * to show unless DOF published unit rows for the building.
+ * case and gets the full "co-ops don't work like that" wording. Most R9 rows
+ * have no per-apartment records to point at; the 40 that do (DOF published
+ * `-U` rows for them) get the "listed below" variant instead — telling those
+ * readers the apartments are "not separately valued" would contradict the
+ * unit table under it.
  */
-export function buildingScaleNote(code: string | null | undefined): string {
+export function buildingScaleNote(
+  code: string | null | undefined,
+  hasUnitRows = false,
+): string {
   if ((code ?? '').trim().toUpperCase() === 'R9') {
-    return (
+    const shares =
       'This is a co-op: residents own shares in the corporation, not their ' +
       'apartments, so the city assesses the whole residential portion as this ' +
-      'one parcel. Individual co-op apartments are not separately valued here.'
+      'one parcel. ';
+    return (
+      shares +
+      (hasUnitRows
+        ? 'Each apartment listed below carries its share of this figure.'
+        : 'Individual co-op apartments are not separately valued here.')
     );
   }
   return BUILDING_SCALE_NOTE;
+}
+
+/**
+ * A co-op building record outside R9/R0 — a C6/D4-style parent row whose `-U`
+ * children are on the roll. Same "shares" explanation as R9, aimed at the
+ * aggregate row above a unit table.
+ */
+export const COOP_BUILDING_NOTE =
+  'This is a co-op: residents own shares in the corporation, not their ' +
+  'apartments. This record is the whole building, and its figure is the ' +
+  'aggregate of the apartment values listed below.';
+
+/** A co-op `-U` unit row — one apartment's share of its building. */
+export const COOP_UNIT_NOTE =
+  "This is a co-op apartment: the resident owns shares in the building's " +
+  'co-operative corporation, not the apartment itself. The figure here is ' +
+  "this unit's share of the building's value, which DOF lists as its own " +
+  'line on the roll.';
+
+/**
+ * The one note a record gets about what it *is* — whole building, co-op
+ * aggregate, or co-op share. Both surfaces (property page, map panel) choose
+ * through here so they can never disagree.
+ */
+export function recordScopeNote(
+  p: { bldg_class?: string | null; parid: string },
+  isBuildingRecord: boolean,
+): string | null {
+  if (isBuildingScaleRecord(p.bldg_class, p.parid)) {
+    return buildingScaleNote(p.bldg_class, isBuildingRecord);
+  }
+  // Only co-ops file a parent row over `-U` children, so a building record
+  // here is a co-op aggregate by construction.
+  if (isBuildingRecord) return COOP_BUILDING_NOTE;
+  if (isCoopUnitRecord(p.parid)) return COOP_UNIT_NOTE;
+  return null;
 }
 
 /** Caption fragment for a building-scale figure ("DOF estimate · …"). */
@@ -179,6 +242,7 @@ export const BUILDING_SCALE_CAPTION = 'entire building/co-op';
  */
 export function shareSummary(
   p: {
+    parid: string;
     address: string | null;
     boro: number;
     block: number;
@@ -199,8 +263,10 @@ export function shareSummary(
     ownerPropertyCount && ownerPropertyCount > 1
       ? ` — and that's just 1 of their ${num(ownerPropertyCount)} NYC properties 🧾`
       : '';
-  // A whole-building record: never let the figure or the tax read as one home's.
-  const whole = isBuildingScaleRecord(p.bldg_class);
+  // A whole-building record: never let the figure or the tax read as one
+  // home's. `parid` matters here — an R9-classed `-U` row is one apartment,
+  // and its share text must not claim "the whole building".
+  const whole = isBuildingScaleRecord(p.bldg_class, p.parid);
 
   if (p.eligible) {
     const valued = whole
@@ -390,9 +456,18 @@ const CLASS_FAMILIES: Record<string, string> = {
   Z: 'Miscellaneous',
 };
 
-export function buildingClassLabel(code: string | null | undefined): string | null {
+export function buildingClassLabel(
+  code: string | null | undefined,
+  parid?: string | null,
+): string | null {
   if (!code) return null;
   const c = code.trim().toUpperCase();
   if (!c) return null;
+  // Unit rows inherit the building's class. For most classes the label reads
+  // fine on a unit ("Elevator co-operative" describes the house), but R9/R0's
+  // labels assert "whole building, not a unit" — false on a `-U` row.
+  if (isCoopUnitRecord(parid) && (c === 'R9' || c === 'R0')) {
+    return 'Apartment in a co-op within a condominium';
+  }
   return BUILDING_CLASSES[c] ?? CLASS_FAMILIES[c[0]] ?? null;
 }

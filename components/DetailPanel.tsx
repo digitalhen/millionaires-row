@@ -5,7 +5,6 @@ import Link from 'next/link';
 import type { PropertyResponse } from '@/lib/types';
 import {
   BUILDING_SCALE_CAPTION,
-  buildingScaleNote,
   addressLabel,
   boroName,
   buildingClassLabel,
@@ -13,6 +12,7 @@ import {
   isBuildingScaleRecord,
   money,
   num,
+  recordScopeNote,
   shareSummary,
   taxClassLabel,
 } from '@/lib/format';
@@ -70,9 +70,10 @@ export default function DetailPanel({
   const p = data?.property ?? null;
   const owner = data?.owner ?? null;
   const building = data?.building ?? null;
-  const bldg = p ? buildingClassLabel(p.bldg_class) : null;
-  /** R9/R0: the row is a whole house, whatever its `-U` children look like. */
-  const buildingScale = p ? isBuildingScaleRecord(p.bldg_class) : false;
+  const bldg = p ? buildingClassLabel(p.bldg_class, p.parid) : null;
+  /** R9/R0 building rows only — a `-U` row is one apartment, never a house. */
+  const buildingScale = p ? isBuildingScaleRecord(p.bldg_class, p.parid) : false;
+  const scopeNote = p ? recordScopeNote(p, building?.isBuildingRecord ?? false) : null;
 
   return (
     <aside
@@ -122,14 +123,15 @@ export default function DetailPanel({
               </p>
             )}
 
-            {/* R9/R0 rows are a corporation's whole building — said before the
-                figure below, which is otherwise read as one apartment's. */}
-            {buildingScale && (
+            {/* What this record *is* — whole building, co-op aggregate, or
+                co-op share — said before the figure below, which is otherwise
+                misread. */}
+            {scopeNote && (
               <p
                 className="crumb"
                 style={{ margin: '10px 0 0', textTransform: 'none' }}
               >
-                {buildingScaleNote(p.bldg_class)}
+                {scopeNote}
               </p>
             )}
 

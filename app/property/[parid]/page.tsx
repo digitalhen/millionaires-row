@@ -22,7 +22,6 @@ import {
 } from '@/lib/seo';
 import {
   BUILDING_SCALE_CAPTION,
-  buildingScaleNote,
   addressLabel,
   boroName,
   boroSlug,
@@ -32,6 +31,7 @@ import {
   isNycZip,
   money,
   num,
+  recordScopeNote,
   shareSummary,
   taxClassLabel,
   tierOf,
@@ -50,7 +50,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
   const label = addressLabel(p.address, p);
   const title = p.fmv != null ? `${label} — ${money(p.fmv)}` : label;
-  const bldg = buildingClassLabel(p.bldg_class);
+  const bldg = buildingClassLabel(p.bldg_class, p.parid);
   const description = [
     `${label}, ${boroName(p.boro)}.`,
     `Owner of record: ${p.owner_norm ? p.owner_display || p.owner : 'none on file'}.`,
@@ -107,9 +107,10 @@ export default async function PropertyPage({ params }: Params) {
 
   const { property: p, owner, otherProperties, building } = data;
   const label = addressLabel(p.address, p);
-  const bldgLabel = buildingClassLabel(p.bldg_class);
-  /** R9/R0: the row is a whole house, whatever its `-U` children look like. */
-  const buildingScale = isBuildingScaleRecord(p.bldg_class);
+  const bldgLabel = buildingClassLabel(p.bldg_class, p.parid);
+  /** R9/R0 building rows only — a `-U` row is one apartment, never a house. */
+  const buildingScale = isBuildingScaleRecord(p.bldg_class, p.parid);
+  const scopeNote = recordScopeNote(p, building?.isBuildingRecord ?? false);
   const hasCoords = p.longitude != null && p.latitude != null;
   const houseRange =
     p.housenum_hi && p.housenum_hi !== p.housenum_lo
@@ -233,11 +234,12 @@ export default async function PropertyPage({ params }: Params) {
             <NotOnRollNote />
           )}
         </p>
-        {/* R9/R0 rows are a corporation's whole building. Said once, next to
-            the address, before any reader gets to the eight-figure value. */}
-        {buildingScale && (
+        {/* What this record *is* — whole building, co-op aggregate, or co-op
+            share. Said once, next to the address, before any reader gets to
+            the figure. */}
+        {scopeNote && (
           <p className="crumb" style={{ marginTop: 10, textTransform: 'none' }}>
-            {buildingScaleNote(p.bldg_class)}
+            {scopeNote}
           </p>
         )}
       </div>

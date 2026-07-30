@@ -30,10 +30,10 @@ export default function PropertyTable({ rows }: { rows: PropertyListItem[] }) {
                 {r.bldg_class ? (
                   <>
                     {r.bldg_class}
-                    {buildingClassLabel(r.bldg_class) ? (
+                    {buildingClassLabel(r.bldg_class, r.parid) ? (
                       <span className="hide-sm" style={{ color: 'var(--grey-2)' }}>
                         {' '}
-                        · {buildingClassLabel(r.bldg_class)}
+                        · {buildingClassLabel(r.bldg_class, r.parid)}
                       </span>
                     ) : null}
                   </>
