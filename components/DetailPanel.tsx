@@ -196,24 +196,53 @@ export default function DetailPanel({
             {/* Several buildings can be geocoded to one map point; the clicked
                 dot only opens the strongest. Listing the rest here is what
                 keeps them reachable — the dots stay on their true, shared
-                coordinate instead of fanning out to places they are not. */}
-            {stack && stack.length > 1 && (
-              <div className="panel-stack">
-                <span className="label">
-                  {num(stack.length)} buildings share this map point
-                </span>
-                <ul>
-                  {stack.map((s) => (
-                    <StackRow
-                      key={s.parid}
-                      entry={s}
-                      active={s.parid === p.parid}
-                      onPick={onSelectStacked}
-                    />
-                  ))}
-                </ul>
-              </div>
-            )}
+                coordinate instead of fanning out to places they are not. A
+                zoomed-out tap also sweeps in genuine neighbours; those are a
+                separate list and are called nearby, never "at this point". */}
+            {(() => {
+              if (!stack || stack.length < 2) return null;
+              const atPoint = stack.filter((s) => s.atPoint);
+              const nearby = stack.filter((s) => !s.atPoint).slice(0, 8);
+              return (
+                <>
+                  {atPoint.length > 1 && (
+                    <div className="panel-stack">
+                      <span className="label">
+                        {num(atPoint.length)} buildings share this map point
+                      </span>
+                      <ul>
+                        {atPoint.map((s) => (
+                          <StackRow
+                            key={s.parid}
+                            entry={s}
+                            active={s.parid === p.parid}
+                            onPick={onSelectStacked}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {nearby.length > 0 && (
+                    <div className="panel-stack">
+                      <span className="label">
+                        {num(nearby.length)} other nearby building
+                        {nearby.length === 1 ? '' : 's'}
+                      </span>
+                      <ul>
+                        {nearby.map((s) => (
+                          <StackRow
+                            key={s.parid}
+                            entry={s}
+                            active={s.parid === p.parid}
+                            onPick={onSelectStacked}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {(p.eligible || !p.on_supplemental) && (
               <p style={{ margin: '10px 0 0' }}>

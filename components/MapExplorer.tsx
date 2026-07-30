@@ -52,6 +52,8 @@ type Tooltip = {
   aggregate: boolean;
   /** OTHER buildings geocoded to this same point (0 almost everywhere) */
   stacked: number;
+  /** buildings merely within the tap radius — zoomed-out neighbours */
+  nearby: number;
   /** render to the left of the cursor when near the right edge */
   flip: boolean;
 };
@@ -79,13 +81,16 @@ function dotLabel(
   return property.address.slice(0, -suffix.length);
 }
 
-/** One building among several sharing a map point, strongest first. */
+/** One building among several under a tap, strongest first. */
 export type MapStackEntry = {
   parid: string;
   fmv: number | null;
   tier: number;
   members: number;
   eligible: number;
+  /** true: at the strongest dot's identical coordinate; false: merely near
+   *  the cursor (a zoomed-out tap sweeps a pixel radius, not a point). */
+  atPoint: boolean;
 };
 
 /**
@@ -127,13 +132,14 @@ function featureStack(
   entries.sort((a, b) => b.tier - a.tier || (b.fmv ?? -1) - (a.fmv ?? -1));
   const top = entries[0];
   if (!top) return [];
-  // The hit area is pixels, so a zoomed-out tap sweeps up dots that are
-  // hundreds of metres apart — neighbours, not a stack. Only dots at the
-  // strongest dot's IDENTICAL coordinate are "at this point"; the rest are
-  // simply near the cursor and must not be reported as sharing the location.
-  return entries
-    .filter((e) => e.lng === top.lng && e.lat === top.lat)
-    .map(({ lng: _lng, lat: _lat, ...rest }) => rest);
+  // The hit area is pixels, so a zoomed-out tap also sweeps up dots that are
+  // hundreds of metres apart. Those stay reachable — that is half the point
+  // of tapping a crowded overview — but they are labelled as *nearby*, never
+  // as sharing the location: only an identical coordinate is "at this point".
+  return entries.map(({ lng, lat, ...rest }) => ({
+    ...rest,
+    atPoint: lng === top.lng && lat === top.lat,
+  }));
 }
 
 export type MapFocus = { lng: number; lat: number; parid: string };
@@ -321,7 +327,8 @@ export default function MapExplorer({
             eligible,
             aggregate: known?.aggregate ?? false,
             address: known?.label ?? null,
-            stacked: stack.length - 1,
+            stacked: stack.filter((s) => s.atPoint).length - 1,
+            nearby: stack.filter((s) => !s.atPoint).length,
             flip: e.point.x > map!.getCanvas().clientWidth - 240,
           });
           if (!known) {
@@ -464,6 +471,12 @@ export default function MapExplorer({
             <div className="t-stack">
               +{num(tooltip.stacked)} more building{tooltip.stacked === 1 ? '' : 's'} at
               this point
+            </div>
+          )}
+          {/* Neighbours swept up by the tap radius at low zoom. */}
+          {tooltip.nearby > 0 && (
+            <div className="t-stack">
+              +{num(tooltip.nearby)} nearby building{tooltip.nearby === 1 ? '' : 's'}
             </div>
           )}
         </div>
