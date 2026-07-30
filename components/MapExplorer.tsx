@@ -110,7 +110,7 @@ function featureStack(
   }[] | undefined,
 ): MapStackEntry[] {
   const seen = new Set<string>();
-  const entries: (MapStackEntry & { lng: number; lat: number })[] = [];
+  const entries: (Omit<MapStackEntry, 'atPoint'> & { lng: number; lat: number })[] = [];
   for (const f of features ?? []) {
     const parid = String(f.properties?.p ?? '');
     if (!parid || seen.has(parid)) continue;
