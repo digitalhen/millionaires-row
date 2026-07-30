@@ -64,6 +64,10 @@ export const POINTS_MAX_LIMIT = 120_000;
  *   OR bldg_class Rx (condo unit)             AND fmv >= $1,000,000
  *   OR co-op unit (parid contains '-U')       AND fmv >= $1,000,000
  *
+ * Mixed-use S-classes (store + home) are deliberately outside the first arm:
+ * their FMV includes the commercial portion, and the surcharge turns on the
+ * residential value, which the roll does not break out (see import.sh).
+ *
  * DOF publishes the roll as "including but not limited to" properties that may
  * be subject to the surcharge, and primary-residence use generally exempts an
  * owner — so the UI always says *may be* subject, never that tax is owed.

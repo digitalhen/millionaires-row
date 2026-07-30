@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { BuildingBlock, PropertyListItem } from '@/lib/types';
-import { addressLabel, money, num } from '@/lib/format';
+import { addressLabel, money, num, unitCountPhrase } from '@/lib/format';
 import { EligibleMark } from './EligibleBadge';
 
 /**
@@ -46,7 +46,7 @@ export default function BuildingUnits({
   // The aggregate covers the co-op's own apartments, which is not always every
   // sibling: a co-op inside a condominium sits alongside commercial units and a
   // billing lot whose values are not in that figure.
-  const aggregate = `${money(buildingRecord?.fmv)} — aggregate of ${num(recordUnitCount)} units`;
+  const aggregate = `${money(buildingRecord?.fmv)} — aggregate of ${unitCountPhrase(recordUnitCount)}`;
 
   const link = (parid: string, children: React.ReactNode, className?: string) => (
     <Link

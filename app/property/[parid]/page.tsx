@@ -35,6 +35,7 @@ import {
   shareSummary,
   taxClassLabel,
   tierOf,
+  unitCountPhrase,
 } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -251,7 +252,7 @@ export default async function PropertyPage({ params }: Params) {
               so the aggregate is named in the headline, not further down. */}
           <span className="label">
             {building?.isBuildingRecord
-              ? `Full market value — aggregate of ${num(building.recordUnitCount)} units`
+              ? `Full market value — aggregate of ${unitCountPhrase(building.recordUnitCount)}`
               : 'Full market value'}
           </span>
           <div className="fmv">{money(p.fmv)}</div>

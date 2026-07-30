@@ -48,11 +48,13 @@ type Tooltip = {
   members: number;
   /** how many of those records may be subject to the surcharge */
   eligible: number;
+  /** the dot's fmv is a co-op building aggregate, not one home's value */
+  aggregate: boolean;
   /** render to the left of the cursor when near the right edge */
   flip: boolean;
 };
 
-const addressCache = new Map<string, string>();
+const addressCache = new Map<string, { label: string; aggregate: boolean }>();
 
 /**
  * Label for a hovered dot.
@@ -273,6 +275,7 @@ export default function MapExplorer({
             geometry: { type: 'Point', coordinates: coords },
           };
           (map!.getSource('hover') as GeoJSONSource).setData(hovered);
+          const known = addressCache.get(parid);
           setTooltip({
             x: e.point.x,
             y: e.point.y,
@@ -280,19 +283,31 @@ export default function MapExplorer({
             fmv,
             members,
             eligible,
-            address: addressCache.get(parid) ?? null,
+            aggregate: known?.aggregate ?? false,
+            address: known?.label ?? null,
             flip: e.point.x > map!.getCanvas().clientWidth - 240,
           });
-          if (!addressCache.has(parid)) {
+          if (!known) {
             fetch(withBase(`/api/property/${encodeURIComponent(parid)}`))
               .then((r) => (r.ok ? r.json() : null))
               .then((d) => {
                 if (!d?.property) return;
                 // A parid belongs to exactly one dot, so its member count — and
-                // therefore its label — is stable enough to cache.
-                const label = dotLabel(d.property, members);
-                addressCache.set(parid, label);
-                setTooltip((t) => (t && t.parid === parid ? { ...t, address: label } : t));
+                // therefore its label — is stable enough to cache. The
+                // aggregate flag rides along: a one-unit co-op's dot carries
+                // the building record's whole-house figure, and with no unit
+                // count to say so ("49 DOWNING STREET · $11.4M") the money
+                // reads as the flagged home's price.
+                const entry = {
+                  label: dotLabel(d.property, members),
+                  aggregate: Boolean(d.building?.isBuildingRecord),
+                };
+                addressCache.set(parid, entry);
+                setTooltip((t) =>
+                  t && t.parid === parid
+                    ? { ...t, address: entry.label, aggregate: entry.aggregate }
+                    : t,
+                );
               })
               .catch(() => {});
           }
@@ -390,16 +405,20 @@ export default function MapExplorer({
           <div className="t-fmv">
             {tooltip.members > 1
               ? `${num(tooltip.members)} units · ${money(tooltip.fmv)} total`
-              : money(tooltip.fmv)}
+              : tooltip.aggregate
+                ? `${money(tooltip.fmv)} building total`
+                : money(tooltip.fmv)}
           </div>
           {/* Red means "contains at least one flagged home", not "this
               valuation is flagged" — an 865-unit tower goes red for 4 units,
               and without the count the total above reads as the taxed sum. */}
-          {tooltip.members > 1 && tooltip.eligible > 0 && (
+          {(tooltip.members > 1 || tooltip.aggregate) && tooltip.eligible > 0 && (
             <div className="t-eligible">
-              {tooltip.eligible === tooltip.members
-                ? 'all units may be subject'
-                : `${num(tooltip.eligible)} of ${num(tooltip.members)} may be subject`}
+              {tooltip.members === 1
+                ? 'the listed unit may be subject'
+                : tooltip.eligible === tooltip.members
+                  ? 'all units may be subject'
+                  : `${num(tooltip.eligible)} of ${num(tooltip.members)} may be subject`}
             </div>
           )}
         </div>

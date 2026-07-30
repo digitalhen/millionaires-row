@@ -15,6 +15,7 @@ import {
   recordScopeNote,
   shareSummary,
   taxClassLabel,
+  unitCountPhrase,
 } from '@/lib/format';
 import BuildingUnits from './BuildingUnits';
 import EligibleBadge, { NotOnRollNote } from './EligibleBadge';
@@ -141,7 +142,7 @@ export default function DetailPanel({
                   house and reads as a single flat otherwise. */}
               <span className="label">
                 {building?.isBuildingRecord
-                  ? `Full market value — aggregate of ${num(building.recordUnitCount)} units`
+                  ? `Full market value — aggregate of ${unitCountPhrase(building.recordUnitCount)}`
                   : 'Full market value'}
               </span>
               <div className="panel-fmv">{money(p.fmv)}</div>

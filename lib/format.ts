@@ -201,6 +201,22 @@ export const COOP_BUILDING_NOTE =
   'apartments. This record is the whole building, and its figure is the ' +
   'aggregate of the apartment values listed below.';
 
+/** Mixed-use S-class: store + home(s) on one parcel, valued as one figure. */
+export function isMixedUseSClass(code: string | null | undefined): boolean {
+  return (code ?? '').trim().toUpperCase().startsWith('S');
+}
+
+/**
+ * Why a $8M storefront-with-homes is not flagged: the surcharge criteria turn
+ * on the residential value, and the roll prices the store and the homes as
+ * one number (the exclusion is documented in scripts/import.sh).
+ */
+export const MIXED_USE_NOTE =
+  'This is a mixed-use building — a store with homes attached, valued by the ' +
+  'city as one parcel. The surcharge criteria turn on the residential value ' +
+  'alone, which the roll does not break out, so mixed-use buildings are ' +
+  'never flagged here.';
+
 /** A co-op `-U` unit row — one apartment's share of its building. */
 export const COOP_UNIT_NOTE =
   "This is a co-op apartment: the resident owns shares in the building's " +
@@ -224,11 +240,17 @@ export function recordScopeNote(
   // here is a co-op aggregate by construction.
   if (isBuildingRecord) return COOP_BUILDING_NOTE;
   if (isCoopUnitRecord(p.parid)) return COOP_UNIT_NOTE;
+  if (isMixedUseSClass(p.bldg_class)) return MIXED_USE_NOTE;
   return null;
 }
 
 /** Caption fragment for a building-scale figure ("DOF estimate · …"). */
 export const BUILDING_SCALE_CAPTION = 'entire building/co-op';
+
+/** "1 unit" / "12 units" — a co-op can publish a single unit row. */
+export function unitCountPhrase(n: number): string {
+  return `${num(n)} unit${n === 1 ? '' : 's'}`;
+}
 
 /**
  * Share text for a property — rides along with the link in the native share

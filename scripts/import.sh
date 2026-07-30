@@ -223,6 +223,12 @@ echo "==> flagging eligible properties (provisional)"
 "${PSQL[@]}" -d "$DB" <<'SQL'
 UPDATE properties SET eligible = true
 WHERE on_supplemental AND (
+      -- Pure-residential 1-3 family classes only. S-classes (store + home,
+      -- 689 of them over $5M) are deliberately NOT here: their FMV lumps the
+      -- commercial portion in with the residence, and the surcharge turns on
+      -- the RESIDENTIAL value, which the roll does not break out — a $7.99M
+      -- storefront-plus-two-families cannot be shown to have a qualifying
+      -- home in it from this data.
       (tax_class LIKE '1%'
        AND (bldg_class LIKE 'A%' OR bldg_class LIKE 'B%' OR bldg_class = 'C0')
        AND fmv > 5000000)
