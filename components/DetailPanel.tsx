@@ -209,6 +209,7 @@ export default function DetailPanel({
                 <h3>In this building</h3>
                 <BuildingUnits
                   building={building}
+                  currentParid={p.parid}
                   rowCap={PANEL_UNIT_ROWS}
                   seeAllParid={p.parid}
                   onNavigate={onSelect}

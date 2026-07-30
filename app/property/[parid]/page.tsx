@@ -265,7 +265,7 @@ export default async function PropertyPage({ params }: Params) {
       {building && (
         <section className="section">
           <h2>In this building</h2>
-          <BuildingUnits building={building} />
+          <BuildingUnits building={building} currentParid={p.parid} />
         </section>
       )}
 

@@ -75,6 +75,29 @@ function dotLabel(
   return property.address.slice(0, -suffix.length);
 }
 
+/**
+ * The dot to honour when several overlap under the cursor. Distinct condo
+ * developments on one block are sometimes geocoded to the *identical*
+ * coordinate (block 485 stacks four), and MapLibre hands back every dot at the
+ * pixel in arbitrary order — taking the first meant a red pixel could open a
+ * white record ("83 Mercer is red, but nothing red when I click it"). Red
+ * paints on top, so the pick must match: strongest tier, then biggest value.
+ */
+function pickFeature<
+  F extends { properties?: Record<string, unknown> | null } | undefined,
+>(features: F[] | undefined): F | undefined {
+  if (!features?.length) return undefined;
+  const rank = (f: F) => [
+    Number(f?.properties?.e ?? -1),
+    Number(f?.properties?.v ?? -1),
+  ];
+  return [...features].sort((a, b) => {
+    const [ta, va] = rank(a);
+    const [tb, vb] = rank(b);
+    return tb - ta || vb - va;
+  })[0];
+}
+
 export type MapFocus = { lng: number; lat: number; parid: string };
 
 export default function MapExplorer({
@@ -236,7 +259,7 @@ export default function MapExplorer({
         for (const layer of selectionLayers('sel')) map.addLayer(layer);
 
         map.on('mousemove', 'hit', (e: MapLayerMouseEvent) => {
-          const f = (e.features ?? [])[0];
+          const f = pickFeature(e.features);
           if (!f) return;
           const parid = String(f.properties?.p ?? '');
           const fmv = f.properties?.v == null ? null : Number(f.properties.v);
@@ -285,7 +308,7 @@ export default function MapExplorer({
         // Fires for a touch tap as well as a mouse click: opens the details
         // panel rather than navigating away from the map.
         map.on('click', 'hit', (e: MapLayerMouseEvent) => {
-          const f = (e.features ?? [])[0];
+          const f = pickFeature(e.features);
           const parid = f?.properties?.p;
           if (parid) onSelect(String(parid));
         });

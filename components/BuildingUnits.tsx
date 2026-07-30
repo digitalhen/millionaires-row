@@ -19,11 +19,14 @@ import { EligibleMark } from './EligibleBadge';
  */
 export default function BuildingUnits({
   building,
+  currentParid,
   rowCap,
   seeAllParid,
   onNavigate,
 }: {
   building: BuildingBlock;
+  /** The parcel whose page/panel this section sits on — marked in the list. */
+  currentParid?: string;
   /** Show at most this many rows (the panel is a 45dvh sheet on a phone). */
   rowCap?: number;
   /** Parcel whose full page carries the untruncated list. */
@@ -31,7 +34,14 @@ export default function BuildingUnits({
   onNavigate?: (parid: string) => void;
 }) {
   const { buildingRecord, isBuildingRecord, recordUnitCount, unitCount, units } = building;
-  const shown = rowCap != null ? units.slice(0, rowCap) : units;
+  let shown = rowCap != null ? units.slice(0, rowCap) : units;
+  // The viewed record must never fall off the capped list — its absence is
+  // what made the section read as a different building's units.
+  if (currentParid && units.some((u) => u.parid === currentParid)
+      && !shown.some((u) => u.parid === currentParid)) {
+    const current = units.find((u) => u.parid === currentParid) as PropertyListItem;
+    shown = [...shown.slice(0, -1), current];
+  }
   const withheld = unitCount > shown.length;
   // The aggregate covers the co-op's own apartments, which is not always every
   // sibling: a co-op inside a condominium sits alongside commercial units and a
@@ -67,7 +77,7 @@ export default function BuildingUnits({
         <p className="bldg-line">
           <span className="label">{isBuildingRecord ? 'This record' : 'Same building'}</span>
           <span className="crumb">
-            {isBuildingRecord ? aggregate : `${num(unitCount + 1)} units, each valued separately`}
+            {isBuildingRecord ? aggregate : `${num(unitCount)} units, each valued separately`}
           </span>
         </p>
       )}
@@ -93,7 +103,14 @@ export default function BuildingUnits({
                 <tr key={u.parid}>
                   <td>
                     {u.eligible ? <EligibleMark /> : null}
-                    {link(u.parid, unitLabel(u))}
+                    {u.parid === currentParid ? (
+                      <>
+                        <strong>{unitLabel(u)}</strong>
+                        <span className="crumb"> · this record</span>
+                      </>
+                    ) : (
+                      link(u.parid, unitLabel(u))
+                    )}
                   </td>
                   <td className={`num${u.eligible ? ' num-eligible' : ''}`}>{money(u.fmv)}</td>
                 </tr>

@@ -205,6 +205,14 @@ async function getBuilding(
     params.push(property.boro, property.block, property.condo_number);
     siblings = '(p.bbl = $1 OR (p.boro = $2 AND p.block = $3 AND p.condo_number = $4))';
   }
+  // A condominium's R0 billing lot is an administrative row with no value of
+  // its own; listed among the units it shows up as a value-less line named
+  // like the building, and it puts the section's count one past what the map
+  // tooltip says (which excludes it for the same reason). Kept only when it is
+  // the parcel being viewed — a record page always shows its own siblings.
+  params.push(property.parid);
+  const self = `$${params.length}`;
+  siblings = `${siblings} AND (upper(trim(COALESCE(p.bldg_class, ''))) <> 'R0' OR p.parid = ${self})`;
 
   const summary = await queryOne<{
     n: number;
@@ -237,9 +245,10 @@ async function getBuilding(
   const buildingParid = summary?.building_parid ?? null;
   const isBuildingRecord = buildingParid === property.parid;
   // The building record is listed once, as the section's header line, so it is
-  // kept out of the unit table along with the parcel being viewed.
-  const skip = [property.parid];
-  if (buildingParid && !isBuildingRecord) skip.push(buildingParid);
+  // kept out of the unit table. The parcel being viewed is NOT: dropping it
+  // made the list read as somebody else's building — click the dot at 31
+  // Mercer, land on APT 5A, and 5A is the one apartment missing below.
+  const skip = buildingParid ? [buildingParid] : [];
   const unitCount = Math.max(0, total - skip.length);
 
   const cols = `p.parid, p.address, p.boro, p.tax_class, p.bldg_class, p.aptno, p.fmv,

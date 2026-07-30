@@ -8,11 +8,12 @@
 #   - co-op '-U' unit rows group with their parent building record by bbl;
 #   - everything else is its own dot.
 #
-# Dot fields: representative parid (eligible member preferred — a red dot must
-# open a record that is itself flagged — then co-op parent, then max FMV
-# member), tier (red if ANY member eligible, else white if any on the
-# supplemental roll, else grey), display fmv (co-op parent aggregate, else
-# member sum), member count, eligible member count.
+# Dot fields: representative parid (co-op parent first — clicking a building
+# should open the building record where one exists — then eligible members, so
+# a red CONDO dot opens a flagged home rather than the tower's biggest
+# commercial unit, then max FMV), tier (red if ANY member eligible, else white
+# if any on the supplemental roll, else grey), display fmv (co-op parent
+# aggregate, else member sum), member count, eligible member count.
 #
 # Run AFTER import/import_avroll/geocode. Idempotent. MROW_DB overrides db.
 set -euo pipefail
@@ -28,6 +29,10 @@ DROP TABLE IF EXISTS map_dots;
 CREATE TABLE map_dots AS
 WITH members AS (
   SELECT p.*,
+    p.parid NOT LIKE '%-U%'
+      AND EXISTS (SELECT 1 FROM properties c
+                   WHERE c.bbl = p.bbl AND c.parid LIKE p.parid || '-U%')
+      AS is_coop_parent,
     CASE
       WHEN p.condo_number IS NOT NULL AND p.lot >= 1001
         THEN 'C:' || p.boro || ':' || p.block || ':' || p.condo_number || ':'
@@ -43,16 +48,17 @@ WITH members AS (
 )
 SELECT
   gid,
-  -- Eligible members first: 1,423 red dots used to open a not-eligible record
-  -- (the group's biggest member is often a commercial condo unit), which read
-  -- as the map flagging something the record then denied. For tier<2 groups
-  -- the eligible term is a no-op and the old order stands: co-op parent, then
-  -- biggest FMV.
-  (array_agg(parid ORDER BY eligible DESC, (parid LIKE '%-U%'), fmv DESC NULLS LAST, parid))[1]
+  -- Co-op parent first: it is the building, and its page carries the whole
+  -- unit list, so a click on the dot at 31 Mercer opens "31 MERCER STREET",
+  -- not "APT 5A". Then eligible members: red CONDO dots (no parent row) used
+  -- to open the tower's biggest member — often a commercial unit that is not
+  -- itself flagged — which read as the map flagging something the record then
+  -- denied. For tier<2 groups the eligible term is a no-op.
+  (array_agg(parid ORDER BY (parid LIKE '%-U%'), eligible DESC, fmv DESC NULLS LAST, parid))[1]
     AS parid,
-  (array_agg(longitude ORDER BY eligible DESC, (parid LIKE '%-U%'), fmv DESC NULLS LAST, parid))[1]
+  (array_agg(longitude ORDER BY (parid LIKE '%-U%'), eligible DESC, fmv DESC NULLS LAST, parid))[1]
     AS longitude,
-  (array_agg(latitude ORDER BY eligible DESC, (parid LIKE '%-U%'), fmv DESC NULLS LAST, parid))[1]
+  (array_agg(latitude ORDER BY (parid LIKE '%-U%'), eligible DESC, fmv DESC NULLS LAST, parid))[1]
     AS latitude,
   CASE WHEN bool_or(eligible) THEN 2
        WHEN bool_or(on_supplemental) THEN 1
@@ -62,7 +68,14 @@ SELECT
   -- share their units' group. Sum only non-unit rows (a group that is ONLY
   -- units, with no parent — doesn't occur — would fall back to the unit sum).
   COALESCE(sum(fmv) FILTER (WHERE parid NOT LIKE '%-U%'), sum(fmv)) AS fmv,
-  count(*)::int AS member_count,
+  -- Counted the way a reader counts: apartments/units, not roll records. The
+  -- co-op parent is the building, not a unit, and a condominium's R0 billing
+  -- lot is an administrative row — a 2-apartment co-op used to read "2 of 3
+  -- may be subject" because its own building record made the 3. The fallback
+  -- to 1 covers a group that is nothing but such rows (a lone R0 dot).
+  GREATEST(count(*) FILTER (WHERE NOT is_coop_parent
+             AND upper(trim(COALESCE(bldg_class, ''))) <> 'R0'), 1)::int
+    AS member_count,
   -- How many members are themselves flagged. The tooltip needs it: a red dot
   -- over an 865-unit tower where 4 units qualify must not read as the whole
   -- building's valuation being flagged.
